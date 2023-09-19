@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
@@ -30,14 +31,18 @@ func setupServer() {
 	http.HandleFunc("/subscribe", handlers.Subscribe)
 }
 
-func setupClient() {
+func setupClient(config Config) {
 	log.Println("Starting client")
 	reconciler := NewReconciler()
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	u := url.URL{Scheme: "ws", Host: "localhost:3400", Path: "/subscribe"}
+	u, err := url.Parse(config.ServerEndpoint)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -123,8 +128,10 @@ func main() {
 	if config.Mode == "server" {
 		setupServer()
 	} else {
-		setupClient()
+		setupClient(config)
 	}
-	log.Println("Starting server on port 3400")
-	log.Fatal(http.ListenAndServe(":3400", nil))
+
+	addr := fmt.Sprintf("%s:%s", config.Host, config.Port)
+	log.Println("Starting server on address", addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }

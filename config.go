@@ -7,8 +7,11 @@ import (
 )
 
 type Config struct {
-	Mode   string `yaml:"mode" validate:"required,oneof=server client"`
-	Secret string `yaml:"secret"`
+	Mode           string `yaml:"mode" validate:"required,oneof=server client"`
+	Secret         string `yaml:"secret"`
+	Host           string `yaml:"host"`
+	Port           string `yaml:"port"`
+	ServerEndpoint string `yaml:"server_endpoint"`
 }
 
 func LoadConfig(configPath string) (Config, error) {
@@ -32,6 +35,18 @@ func LoadConfig(configPath string) (Config, error) {
 
 	if err := validate.Struct(config); err != nil {
 		return config, err
+	}
+
+	if config.Host == "" {
+		config.Host = "localhost"
+	}
+
+	if config.Port == "" {
+		config.Port = "3400"
+	}
+
+	if config.ServerEndpoint == "" {
+		config.ServerEndpoint = "ws://localhost:3400/subscribe"
 	}
 
 	return config, nil
