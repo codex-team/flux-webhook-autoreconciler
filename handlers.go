@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/websocket"
-	"k8s.io/client-go/rest"
 	"log"
 	"net/http"
 )
@@ -16,16 +15,16 @@ type Client struct {
 }
 
 type Handlers struct {
-	k8sClient *rest.RESTClient
-	validate  *validator.Validate
-	upgrader  websocket.Upgrader
-	clients   map[*Client]bool
+	reconciler *Reconciler
+	validate   *validator.Validate
+	upgrader   websocket.Upgrader
+	clients    map[*Client]bool
 }
 
-func NewHandlers(k8sClient *rest.RESTClient) *Handlers {
+func NewHandlers(reconciler *Reconciler) *Handlers {
 	validate := validator.New(validator.WithRequiredStructEnabled())
 	clients := make(map[*Client]bool)
-	return &Handlers{k8sClient: k8sClient, validate: validate, upgrader: websocket.Upgrader{}, clients: clients}
+	return &Handlers{reconciler: reconciler, validate: validate, upgrader: websocket.Upgrader{}, clients: clients}
 }
 
 func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +72,7 @@ func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
 		log.Println("Sent to client")
 	}
 
-	reconcileSources(ociUrl, tag)
+	s.reconciler.ReconcileSources(ociUrl, tag)
 }
 
 func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {

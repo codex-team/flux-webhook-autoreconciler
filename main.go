@@ -2,15 +2,15 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"flag"
-	fluxMeta "github.com/fluxcd/pkg/apis/meta"
-	sourceController "github.com/fluxcd/source-controller/api/v1beta2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
+	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"time"
 )
 
 func PrettyEncode(data interface{}) string {
@@ -50,54 +50,9 @@ type ContainerPushPayload struct {
 	RegistryPackage RegistryPackagePayload `json:"registry_package"`
 }
 
-func reconcileSources(ociUrl string, tag string) {
-	restClient := getRestClient()
-
-	var res sourceController.OCIRepositoryList
-	err := restClient.Get().Resource("ocirepositories").Namespace("").Do(context.Background()).Into(&res)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, ociRepository := range res.Items {
-		if ociRepository.Spec.URL == ociUrl && ociRepository.Spec.Reference.Tag == tag {
-			log.Println("Reconciling", ociRepository.Name)
-			annotateRepository(ociRepository)
-		}
-	}
-}
-
-func annotateRepository(repository sourceController.OCIRepository) {
-	restClient := getRestClient()
-
-	patch := struct {
-		Metadata struct {
-			Annotations map[string]string `json:"annotations"`
-		} `json:"metadata"`
-	}{}
-
-	patch.Metadata.Annotations = make(map[string]string)
-
-	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
-
-	patchJson, _ := json.Marshal(patch)
-
-	var res sourceController.OCIRepository
-	err := restClient.
-		Patch(types.MergePatchType).
-		Resource("ocirepositories").
-		Namespace(repository.Namespace).
-		Name(repository.Name).
-		Body(patchJson).
-		Do(context.Background()).
-		Into(&res)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
 func startServer() {
-	k8sClient := getRestClient()
-	handlers := NewHandlers(k8sClient)
+	reconciler := NewReconciler()
+	handlers := NewHandlers(reconciler)
 	http.HandleFunc("/webhook", handlers.Webhook)
 	http.HandleFunc("/subscribe", handlers.Subscribe)
 
@@ -107,6 +62,63 @@ func startServer() {
 
 func startClient() {
 	log.Println("Starting client")
+
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+
+	u := url.URL{Scheme: "ws", Host: "localhost:3400", Path: "/subscribe"}
+	log.Printf("connecting to %s", u.String())
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Fatal("dial:", err)
+	}
+	defer c.Close()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		for {
+			_, message, err := c.ReadMessage()
+			if err != nil {
+				log.Println("read:", err)
+				return
+			}
+			log.Printf("recv: %s", message)
+		}
+	}()
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-done:
+			return
+		//case t := <-ticker.C:
+		//	err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
+		//	if err != nil {
+		//		log.Println("write:", err)
+		//		return
+		//	}
+		case <-interrupt:
+			log.Println("interrupt")
+
+			// Cleanly close the connection by sending a close message and then
+			// waiting (with timeout) for the server to close the connection.
+			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			if err != nil {
+				log.Println("write close:", err)
+				return
+			}
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+			}
+			return
+		}
+	}
 }
 
 func main() {

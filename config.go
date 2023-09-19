@@ -13,7 +13,6 @@ type Config struct {
 
 func LoadConfig(configPath string) (Config, error) {
 	var config Config
-	// read config.yaml file and unmarshal it into config struct
 
 	file, err := os.Open(configPath)
 	if err != nil {
