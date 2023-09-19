@@ -23,33 +23,6 @@ func PrettyEncode(data interface{}) string {
 	return buf.String()
 }
 
-type RegistryPackagePayload struct {
-	Name           string `json:"name" validate:"required"`
-	Namespace      string `json:"namespace" validate:"required"`
-	PackageType    string `json:"package_type" validate:"required,eq=CONTAINER"`
-	PackageVersion struct {
-		ContainerMetadata struct {
-			Tag struct {
-				Name string `json:"name" validate:"required"`
-			} `json:"tag" validate:"required"`
-		} `json:"container_metadata" validate:"required"`
-	} `json:"package_version" validate:"required"`
-}
-
-type ExpectedPayload struct {
-	ContainerPushPayload
-	PingEventPayload
-}
-
-type PingEventPayload struct {
-	HookId uint32 `json:"hook_id" validate:"required"`
-}
-
-type ContainerPushPayload struct {
-	Action          string                 `json:"action" validate:"required,eq=published"`
-	RegistryPackage RegistryPackagePayload `json:"registry_package"`
-}
-
 func startServer() {
 	reconciler := NewReconciler()
 	handlers := NewHandlers(reconciler)
