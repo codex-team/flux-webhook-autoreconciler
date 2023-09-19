@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	fluxMeta "github.com/fluxcd/pkg/apis/meta"
 	sourceController "github.com/fluxcd/source-controller/api/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -94,7 +95,7 @@ func annotateRepository(repository sourceController.OCIRepository) {
 	}
 }
 
-func main() {
+func startServer() {
 	k8sClient := getRestClient()
 	handlers := NewHandlers(k8sClient)
 	http.HandleFunc("/webhook", handlers.Webhook)
@@ -102,4 +103,26 @@ func main() {
 
 	log.Println("Starting server on port 3400")
 	log.Fatal(http.ListenAndServe(":3400", nil))
+}
+
+func startClient() {
+	log.Println("Starting client")
+}
+
+func main() {
+	var configPath string
+	flag.StringVar(&configPath, "config", "config.yaml", "Path to config file")
+	flag.Parse()
+
+	config, err := LoadConfig(configPath)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if config.Mode == "server" {
+		startServer()
+	} else {
+		startClient()
+	}
 }
