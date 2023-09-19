@@ -142,9 +142,11 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 
 func (s *Handlers) RegisterClient(client *Client) {
 	s.clients[client] = true
+	clientsConnected.Inc()
 }
 
 func (s *Handlers) UnregisterClient(client *Client) {
 	close(client.send)
 	delete(s.clients, client)
+	clientsConnected.Dec()
 }

@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"flag"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
-	"time"
 )
 
 func PrettyEncode(data interface{}) string {
@@ -23,17 +23,14 @@ func PrettyEncode(data interface{}) string {
 	return buf.String()
 }
 
-func startServer() {
+func setupServer() {
 	reconciler := NewReconciler()
 	handlers := NewHandlers(reconciler)
 	http.HandleFunc("/webhook", handlers.Webhook)
 	http.HandleFunc("/subscribe", handlers.Subscribe)
-
-	log.Println("Starting server on port 3400")
-	log.Fatal(http.ListenAndServe(":3400", nil))
 }
 
-func startClient() {
+func setupClient() {
 	log.Println("Starting client")
 	reconciler := NewReconciler()
 
@@ -77,37 +74,37 @@ func startClient() {
 			log.Printf("recv: %s", message)
 		}
 	}()
-
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-done:
-			return
-		//case t := <-ticker.C:
-		//	err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
-		//	if err != nil {
-		//		log.Println("write:", err)
-		//		return
-		//	}
-		case <-interrupt:
-			log.Println("interrupt")
-
-			// Cleanly close the connection by sending a close message and then
-			// waiting (with timeout) for the server to close the connection.
-			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			if err != nil {
-				log.Println("write close:", err)
-				return
-			}
-			select {
-			case <-done:
-			case <-time.After(time.Second):
-			}
-			return
-		}
-	}
+	//
+	//ticker := time.NewTicker(time.Second)
+	//defer ticker.Stop()
+	//
+	//for {
+	//	select {
+	//	case <-done:
+	//		return
+	//	//case t := <-ticker.C:
+	//	//	err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
+	//	//	if err != nil {
+	//	//		log.Println("write:", err)
+	//	//		return
+	//	//	}
+	//	case <-interrupt:
+	//		log.Println("interrupt")
+	//
+	//		// Cleanly close the connection by sending a close message and then
+	//		// waiting (with timeout) for the server to close the connection.
+	//		err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	//		if err != nil {
+	//			log.Println("write close:", err)
+	//			return
+	//		}
+	//		select {
+	//		case <-done:
+	//		case <-time.After(time.Second):
+	//		}
+	//		return
+	//	}
+	//}
 }
 
 func main() {
@@ -121,9 +118,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	http.Handle("/metrics", promhttp.Handler())
+
 	if config.Mode == "server" {
-		startServer()
+		setupServer()
 	} else {
-		startClient()
+		setupClient()
 	}
+	log.Println("Starting server on port 3400")
+	log.Fatal(http.ListenAndServe(":3400", nil))
 }
