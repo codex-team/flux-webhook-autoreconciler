@@ -7,7 +7,7 @@ require (
 	github.com/fluxcd/source-controller/api v1.1.0
 	github.com/go-playground/validator/v10 v10.15.4
 	github.com/gorilla/websocket v1.5.0
-	github.com/prometheus/client_golang v1.15.1
+	github.com/prometheus/client_golang v1.16.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.28.2
 	k8s.io/client-go v0.28.2
@@ -46,7 +46,7 @@ require (
 	github.com/onsi/gomega v1.27.10 // indirect
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
-	github.com/prometheus/procfs v0.9.0 // indirect
+	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	golang.org/x/crypto v0.12.0 // indirect
