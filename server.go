@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/websocket"
 	"k8s.io/client-go/rest"
@@ -11,6 +12,7 @@ import (
 
 type Client struct {
 	connection *websocket.Conn
+	send       chan string
 }
 
 type Handlers struct {
@@ -22,7 +24,8 @@ type Handlers struct {
 
 func NewHandlers(k8sClient *rest.RESTClient) *Handlers {
 	validate := validator.New(validator.WithRequiredStructEnabled())
-	return &Handlers{k8sClient: k8sClient, validate: validate, upgrader: websocket.Upgrader{}}
+	clients := make(map[*Client]bool)
+	return &Handlers{k8sClient: k8sClient, validate: validate, upgrader: websocket.Upgrader{}, clients: clients}
 }
 
 func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
@@ -31,24 +34,46 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 		log.Print("upgrade:", err)
 		return
 	}
+	log.Println("Handle new client")
 	defer c.Close()
 
-	client := &Client{connection: c}
+	sendChan := make(chan string, 5)
+	client := &Client{connection: c, send: sendChan}
 	s.RegisterClient(client)
+	defer func() {
+		s.UnregisterClient(client)
+		log.Println("Unregistered client")
+	}()
+	log.Println("Registered client")
 
 	for {
-		mt, message, err := c.ReadMessage()
-		if err != nil {
-			log.Println("read:", err)
+		message, more := <-client.send
+		if !more {
+			log.Println("Connection closed")
 			break
 		}
-		log.Printf("recv: %s", message)
-		err = c.WriteMessage(mt, message)
+
+		err := c.WriteMessage(websocket.TextMessage, []byte(message))
+
 		if err != nil {
 			log.Println("write:", err)
 			break
 		}
+		log.Println("Message sent")
 	}
+}
+
+func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
+	tag := payload.RegistryPackage.PackageVersion.ContainerMetadata.Tag.Name
+	ociUrl := fmt.Sprintf("oci://ghcr.io/%s/%s", payload.RegistryPackage.Namespace, payload.RegistryPackage.Name)
+	log.Println("Handling", ociUrl, tag)
+
+	for client := range s.clients {
+		client.send <- fmt.Sprintf("%s:%s", ociUrl, tag)
+		log.Println("Sent to client")
+	}
+
+	reconcileSources(ociUrl, tag)
 }
 
 func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +93,7 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case s.validate.Struct(requestPayload.ContainerPushPayload) == nil:
-		HandleContainerPushPayload(requestPayload.ContainerPushPayload)
+		s.HandleContainerPushPayload(requestPayload.ContainerPushPayload)
 	case s.validate.Struct(requestPayload.PingEventPayload) == nil:
 		log.Println("PingEventPayload")
 		log.Println(PrettyEncode(requestPayload.PingEventPayload))
@@ -82,5 +107,6 @@ func (s *Handlers) RegisterClient(client *Client) {
 }
 
 func (s *Handlers) UnregisterClient(client *Client) {
+	close(client.send)
 	delete(s.clients, client)
 }

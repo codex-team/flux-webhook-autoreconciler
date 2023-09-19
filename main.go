@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	fluxMeta "github.com/fluxcd/pkg/apis/meta"
 	sourceController "github.com/fluxcd/source-controller/api/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,18 +94,12 @@ func annotateRepository(repository sourceController.OCIRepository) {
 	}
 }
 
-func HandleContainerPushPayload(payload ContainerPushPayload) {
-	tag := payload.RegistryPackage.PackageVersion.ContainerMetadata.Tag.Name
-	ociUrl := fmt.Sprintf("oci://ghcr.io/%s/%s", payload.RegistryPackage.Namespace, payload.RegistryPackage.Name)
-	log.Println("Handling", ociUrl, tag)
-	reconcileSources(ociUrl, tag)
-}
-
 func main() {
 	k8sClient := getRestClient()
 	handlers := NewHandlers(k8sClient)
 	http.HandleFunc("/webhook", handlers.Webhook)
 	http.HandleFunc("/subscribe", handlers.Subscribe)
 
+	log.Println("Starting server on port 3400")
 	log.Fatal(http.ListenAndServe(":3400", nil))
 }
