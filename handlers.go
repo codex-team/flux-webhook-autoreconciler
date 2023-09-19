@@ -9,9 +9,14 @@ import (
 	"net/http"
 )
 
+type SubscribeEventPayload struct {
+	OciUrl string `json:"oci_url"`
+	Tag    string `json:"tag"`
+}
+
 type Client struct {
 	connection *websocket.Conn
-	send       chan string
+	send       chan SubscribeEventPayload
 }
 
 type Handlers struct {
@@ -36,7 +41,7 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 	log.Println("Handle new client")
 	defer c.Close()
 
-	sendChan := make(chan string, 5)
+	sendChan := make(chan SubscribeEventPayload, 5)
 	client := &Client{connection: c, send: sendChan}
 	s.RegisterClient(client)
 	defer func() {
@@ -52,7 +57,13 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		err := c.WriteMessage(websocket.TextMessage, []byte(message))
+		buff, err := json.Marshal(message)
+		if err != nil {
+			log.Println("marshal:", err)
+			break
+		}
+
+		err = c.WriteMessage(websocket.BinaryMessage, buff)
 
 		if err != nil {
 			log.Println("write:", err)
@@ -68,7 +79,8 @@ func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
 	log.Println("Handling", ociUrl, tag)
 
 	for client := range s.clients {
-		client.send <- fmt.Sprintf("%s:%s", ociUrl, tag)
+		payload := SubscribeEventPayload{OciUrl: ociUrl, Tag: tag}
+		client.send <- payload
 		log.Println("Sent to client")
 	}
 

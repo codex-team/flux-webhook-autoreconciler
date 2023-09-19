@@ -62,6 +62,7 @@ func startServer() {
 
 func startClient() {
 	log.Println("Starting client")
+	reconciler := NewReconciler()
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -80,11 +81,26 @@ func startClient() {
 	go func() {
 		defer close(done)
 		for {
-			_, message, err := c.ReadMessage()
+			messageType, message, err := c.ReadMessage()
 			if err != nil {
 				log.Println("read:", err)
 				return
 			}
+
+			if messageType != websocket.BinaryMessage {
+				log.Println("Not binary message")
+				return
+			}
+
+			var payload SubscribeEventPayload
+			err = json.Unmarshal(message, &payload)
+			if err != nil {
+				log.Println("unmarshal:", err)
+				return
+			}
+
+			reconciler.ReconcileSources(payload.OciUrl, payload.Tag)
+
 			log.Printf("recv: %s", message)
 		}
 	}()
