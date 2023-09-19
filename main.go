@@ -7,7 +7,6 @@ import (
 	"fmt"
 	fluxMeta "github.com/fluxcd/pkg/apis/meta"
 	sourceController "github.com/fluxcd/source-controller/api/v1beta2"
-	"github.com/go-playground/validator/v10"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"log"
@@ -104,46 +103,10 @@ func HandleContainerPushPayload(payload ContainerPushPayload) {
 }
 
 func main() {
-	//client := getDynamicClient()
-	//
-	//restClient := getRestClient()
-	//
-	//var res sourceController.OCIRepositoryList
-	//err := restClient.Get().Resource("ocirepositories").Namespace("").Do(context.Background()).Into(&res)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//log.Println(PrettyEncode(res))
-	//
-	//resource, _ := client.Resource(sourceController.GroupVersion.WithResource("ocirepositories")).Namespace("").List(context.Background(), metav1.ListOptions{})
-	//log.Println(PrettyEncode(resource))
-	//log.Println(sourceController.OCIRepository{}.ResourceVersion)
+	k8sClient := getRestClient()
+	handlers := NewHandlers(k8sClient)
+	http.HandleFunc("/webhook", handlers.Webhook)
+	http.HandleFunc("/subscribe", handlers.Subscribe)
 
-	validate := validator.New(validator.WithRequiredStructEnabled())
-	http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-
-		var requestPayload ExpectedPayload
-
-		err := json.NewDecoder(r.Body).Decode(&requestPayload)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		log.Println(PrettyEncode(requestPayload))
-
-		switch {
-		case validate.Struct(requestPayload.ContainerPushPayload) == nil:
-			HandleContainerPushPayload(requestPayload.ContainerPushPayload)
-		case validate.Struct(requestPayload.PingEventPayload) == nil:
-			log.Println("PingEventPayload")
-			log.Println(PrettyEncode(requestPayload.PingEventPayload))
-		default:
-			log.Println("Unknown payload")
-		}
-	})
 	log.Fatal(http.ListenAndServe(":3400", nil))
 }
