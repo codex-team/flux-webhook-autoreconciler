@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 func PrettyEncode(data interface{}) string {
@@ -29,7 +31,7 @@ func setupServer() {
 	http.HandleFunc("/subscribe", handlers.Subscribe)
 }
 
-func setupClient(config Config) {
+func setupClient(config Config, shutdownChan chan struct{}) {
 	log.Println("Starting client")
 	reconciler := NewReconciler()
 
@@ -38,39 +40,58 @@ func setupClient(config Config) {
 		log.Fatal(err)
 	}
 
-	log.Printf("connecting to %s", u.String())
+	// Number of retry attempts
+	maxRetries := 5
 
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		log.Fatal("dial:", err)
-	}
+	// Time delay between retries
+	retryDelay := time.Second * 5
+
+	retry := 0
 
 	go func() {
-		defer c.Close()
-		for {
-			messageType, message, err := c.ReadMessage()
+		for retry < maxRetries {
+			log.Printf("connecting to %s", u.String())
+
+			c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 			if err != nil {
-				log.Println("read:", err)
-				return
+				time.Sleep(retryDelay)
+				retry++
+				log.Println("dial:", err)
+				continue
+			}
+			defer c.Close()
+			log.Println("connected to", u.String())
+
+			retry = 0
+
+			for {
+				messageType, message, err := c.ReadMessage()
+				if err != nil {
+					log.Println("read:", err)
+					break
+				}
+
+				if messageType != websocket.BinaryMessage {
+					log.Println("Not binary message")
+					break
+				}
+
+				var payload SubscribeEventPayload
+				err = json.Unmarshal(message, &payload)
+				if err != nil {
+					log.Println("unmarshal:", err)
+					break
+				}
+
+				reconciler.ReconcileSources(payload.OciUrl, payload.Tag)
+
+				log.Printf("recv: %s", message)
 			}
 
-			if messageType != websocket.BinaryMessage {
-				log.Println("Not binary message")
-				return
-			}
-
-			var payload SubscribeEventPayload
-			err = json.Unmarshal(message, &payload)
-			if err != nil {
-				log.Println("unmarshal:", err)
-				return
-			}
-
-			reconciler.ReconcileSources(payload.OciUrl, payload.Tag)
-
-			log.Printf("recv: %s", message)
 		}
+		shutdownChan <- struct{}{}
 	}()
+
 }
 
 func main() {
@@ -86,13 +107,28 @@ func main() {
 
 	http.Handle("/metrics", promhttp.Handler())
 
+	shutdownChan := make(chan struct{})
+
 	if config.Mode == "server" {
 		setupServer()
 	} else {
-		setupClient(config)
+		setupClient(config, shutdownChan)
 	}
 
 	addr := fmt.Sprintf("%s:%s", config.Host, config.Port)
-	log.Println("Starting server on address", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+
+	server := &http.Server{Addr: addr}
+
+	go func() {
+		log.Println("Starting server on address", addr)
+		log.Fatal(server.ListenAndServe())
+	}()
+	select {
+	case <-shutdownChan:
+		log.Println("Shutting down server")
+		// Received a shutdown signal, so shut down the server gracefully
+		if err := server.Shutdown(context.Background()); err != nil {
+			log.Fatal(err)
+		}
+	}
 }
