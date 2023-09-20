@@ -49,12 +49,12 @@ func setupClient(config Config) {
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
-	defer c.Close()
 
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
+		defer c.Close()
 		for {
 			messageType, message, err := c.ReadMessage()
 			if err != nil {
