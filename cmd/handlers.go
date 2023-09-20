@@ -127,7 +127,9 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 			}
 			log.Println("Message sent")
 		case <-ticker.C:
+			log.Println("ping")
 			if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+				log.Println("ping:", err)
 				return
 			}
 		}
