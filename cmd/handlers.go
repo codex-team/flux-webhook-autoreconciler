@@ -7,6 +7,21 @@ import (
 	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
+	"time"
+)
+
+const (
+	// Time allowed to write a message to the peer.
+	writeWait = 10 * time.Second
+
+	// Time allowed to read the next pong message from the peer.
+	pongWait = 10 * time.Second
+
+	// Send pings to peer with this period. Must be less than pongWait.
+	pingPeriod = (pongWait * 9) / 10
+
+	// Maximum message size allowed from peer.
+	maxMessageSize = 512
 )
 
 type RegistryPackagePayload struct {
@@ -77,26 +92,45 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 	}()
 	log.Println("Registered client")
 
+	if err := c.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		log.Println(err)
+		return
+	}
+
+	c.SetPongHandler(func(pongMsg string) error {
+		// Current time + Pong Wait time
+		log.Println("pong")
+		return c.SetReadDeadline(time.Now().Add(pongWait))
+	})
+
+	ticker := time.NewTicker(pingPeriod)
+
 	for {
-		message, more := <-client.send
-		if !more {
-			log.Println("Connection closed")
-			break
-		}
+		select {
+		case message, more := <-client.send:
+			if !more {
+				log.Println("Connection closed")
+				break
+			}
 
-		buff, err := json.Marshal(message)
-		if err != nil {
-			log.Println("marshal:", err)
-			break
-		}
+			buff, err := json.Marshal(message)
+			if err != nil {
+				log.Println("marshal:", err)
+				break
+			}
 
-		err = c.WriteMessage(websocket.BinaryMessage, buff)
+			err = c.WriteMessage(websocket.BinaryMessage, buff)
 
-		if err != nil {
-			log.Println("write:", err)
-			break
+			if err != nil {
+				log.Println("write:", err)
+				break
+			}
+			log.Println("Message sent")
+		case <-ticker.C:
+			if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+				return
+			}
 		}
-		log.Println("Message sent")
 	}
 }
 
