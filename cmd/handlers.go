@@ -68,7 +68,7 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 	log.Println("Handle new client")
 	defer c.Close()
 
-	sendChan := make(chan SubscribeEventPayload, 5)
+	sendChan := make(chan SubscribeEventPayload)
 	client := &Client{connection: c, send: sendChan}
 	s.RegisterClient(client)
 	defer func() {
