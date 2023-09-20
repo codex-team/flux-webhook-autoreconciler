@@ -10,8 +10,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"os/signal"
 )
 
 func PrettyEncode(data interface{}) string {
@@ -35,9 +33,6 @@ func setupClient(config Config) {
 	log.Println("Starting client")
 	reconciler := NewReconciler()
 
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-
 	u, err := url.Parse(config.ServerEndpoint)
 	if err != nil {
 		log.Fatal(err)
@@ -50,10 +45,7 @@ func setupClient(config Config) {
 		log.Fatal("dial:", err)
 	}
 
-	done := make(chan struct{})
-
 	go func() {
-		defer close(done)
 		defer c.Close()
 		for {
 			messageType, message, err := c.ReadMessage()
@@ -79,37 +71,6 @@ func setupClient(config Config) {
 			log.Printf("recv: %s", message)
 		}
 	}()
-	//
-	//ticker := time.NewTicker(time.Second)
-	//defer ticker.Stop()
-	//
-	//for {
-	//	select {
-	//	case <-done:
-	//		return
-	//	//case t := <-ticker.C:
-	//	//	err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
-	//	//	if err != nil {
-	//	//		log.Println("write:", err)
-	//	//		return
-	//	//	}
-	//	case <-interrupt:
-	//		log.Println("interrupt")
-	//
-	//		// Cleanly close the connection by sending a close message and then
-	//		// waiting (with timeout) for the server to close the connection.
-	//		err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	//		if err != nil {
-	//			log.Println("write close:", err)
-	//			return
-	//		}
-	//		select {
-	//		case <-done:
-	//		case <-time.After(time.Second):
-	//		}
-	//		return
-	//	}
-	//}
 }
 
 func main() {
