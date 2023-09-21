@@ -32,12 +32,6 @@ func LoadConfig(configPath string) (Config, error) {
 		return config, err
 	}
 
-	validate := validator.New(validator.WithRequiredStructEnabled())
-
-	if err := validate.Struct(config); err != nil {
-		return config, err
-	}
-
 	if config.Host == "" {
 		config.Host = "localhost"
 	}
@@ -48,6 +42,12 @@ func LoadConfig(configPath string) (Config, error) {
 
 	if config.ServerEndpoint == "" {
 		config.ServerEndpoint = "ws://localhost:3400/subscribe"
+	}
+
+	validate := validator.New(validator.WithRequiredStructEnabled())
+
+	if err := validate.Struct(config); err != nil {
+		return config, err
 	}
 
 	return config, nil

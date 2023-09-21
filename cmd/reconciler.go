@@ -5,19 +5,21 @@ import (
 	"encoding/json"
 	fluxMeta "github.com/fluxcd/pkg/apis/meta"
 	sourceController "github.com/fluxcd/source-controller/api/v1beta2"
+	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
-	"log"
 )
 
 type Reconciler struct {
 	restClient *rest.RESTClient
+	logger     *zap.Logger
 }
 
-func NewReconciler() *Reconciler {
+func NewReconciler(logger *zap.Logger) *Reconciler {
 	return &Reconciler{
 		restClient: getRestClient(),
+		logger:     logger,
 	}
 }
 
@@ -27,11 +29,11 @@ func (r *Reconciler) ReconcileSources(ociUrl string, tag string) {
 	var res sourceController.OCIRepositoryList
 	err := restClient.Get().Resource("ocirepositories").Namespace("").Do(context.Background()).Into(&res)
 	if err != nil {
-		log.Fatal(err)
+		r.logger.Fatal("Failed to get OCIRepositories", zap.Error(err))
 	}
 	for _, ociRepository := range res.Items {
 		if ociRepository.Spec.URL == ociUrl && ociRepository.Spec.Reference.Tag == tag {
-			log.Println("Reconciling", ociRepository.Name)
+			r.logger.Info("Reconciling OCIRepository", zap.String("name", ociRepository.Name))
 			r.annotateRepository(ociRepository)
 		}
 	}
@@ -62,6 +64,6 @@ func (r *Reconciler) annotateRepository(repository sourceController.OCIRepositor
 		Do(context.Background()).
 		Into(&res)
 	if err != nil {
-		log.Fatal(err)
+		r.logger.Fatal("Failed to patch OCIRepository", zap.String("name", repository.Name), zap.Error(err))
 	}
 }

@@ -9,25 +9,19 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 )
 
 const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-
 	// Time allowed to read the next pong message from the peer.
 	pongWait = 10 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
 	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
-	maxMessageSize = 512
 )
 
 type RegistryPackagePayload struct {
@@ -73,20 +67,32 @@ type Handlers struct {
 	reconciler *Reconciler
 	validate   *validator.Validate
 	upgrader   websocket.Upgrader
+	logger     *zap.Logger
 	clients    map[*Client]bool
 }
 
-func NewHandlers(config Config, reconciler *Reconciler) *Handlers {
+func NewHandlers(config Config, reconciler *Reconciler, logger *zap.Logger) *Handlers {
 	validate := validator.New(validator.WithRequiredStructEnabled())
 	clients := make(map[*Client]bool)
-	return &Handlers{config: config, reconciler: reconciler, validate: validate, upgrader: websocket.Upgrader{}, clients: clients}
+	return &Handlers{
+		config:     config,
+		reconciler: reconciler,
+		validate:   validate,
+		upgrader:   websocket.Upgrader{},
+		clients:    clients,
+		logger:     logger,
+	}
 }
 
 func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
+	clientUuid := uuid.New()
+	clientId := clientUuid.String()
+	s.logger.Info("Handling new subscription", zap.String("clientId", clientId))
+
 	if s.config.SubscribeSecret != "" {
 		authSecret := r.URL.Query().Get("authSecret")
 		if authSecret != s.config.SubscribeSecret {
-			log.Println("Invalid auth secret")
+			s.logger.Info("Invalid auth secret from client", zap.String("clientId", clientId))
 			http.Error(w, "Invalid auth secret", http.StatusUnauthorized)
 			return
 		}
@@ -94,31 +100,26 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 
 	c, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Print("upgrade:", err)
+		s.logger.Error("Connection upgrading error", zap.Error(err), zap.String("clientId", clientId))
 		return
 	}
-	log.Println("Handle new client")
 	defer c.Close()
 
-	clientUuid := uuid.New()
-
 	sendChan := make(chan SubscribeEventPayload)
-	client := &Client{connection: c, send: sendChan, id: clientUuid.String()}
+	client := &Client{connection: c, send: sendChan, id: clientId}
 	s.RegisterClient(client)
 	defer func() {
 		s.UnregisterClient(client)
-		log.Println("Unregistered client")
+		s.logger.Info("Unregistered client", zap.String("clientId", clientId))
 	}()
-	log.Println("Registered client")
+	s.logger.Info("Registered client", zap.String("clientId", clientId))
 
 	if err := c.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-		log.Println(err)
+		s.logger.Error("SetReadDeadline error", zap.Error(err), zap.String("clientId", clientId))
 		return
 	}
 
 	c.SetPongHandler(func(pongMsg string) error {
-		// Current time + Pong Wait time
-		log.Println("pong")
 		return c.SetReadDeadline(time.Now().Add(pongWait))
 	})
 
@@ -128,27 +129,26 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 		select {
 		case message, more := <-client.send:
 			if !more {
-				log.Println("Connection closed")
+				s.logger.Info("Client send channel closed", zap.String("clientId", clientId))
 				break
 			}
 
 			buff, err := json.Marshal(message)
 			if err != nil {
-				log.Println("marshal:", err)
+				s.logger.Error("Error marshalling message", zap.Error(err), zap.String("clientId", clientId))
 				break
 			}
 
 			err = c.WriteMessage(websocket.BinaryMessage, buff)
 
 			if err != nil {
-				log.Println("write:", err)
+				s.logger.Error("Error writing message", zap.Error(err), zap.String("clientId", clientId))
 				break
 			}
-			log.Println("Message sent")
+			s.logger.Info("Sent message", zap.String("clientId", clientId))
 		case <-ticker.C:
-			log.Println("ping")
 			if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-				log.Println("ping:", err)
+				s.logger.Error("Error writing ping message", zap.Error(err), zap.String("clientId", clientId))
 				return
 			}
 		}
@@ -158,19 +158,17 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
 	tag := payload.RegistryPackage.PackageVersion.ContainerMetadata.Tag.Name
 	ociUrl := fmt.Sprintf("oci://ghcr.io/%s/%s", payload.RegistryPackage.Namespace, payload.RegistryPackage.Name)
-	log.Println("Handling", ociUrl, tag)
 
 	for client := range s.clients {
 		payload := SubscribeEventPayload{OciUrl: ociUrl, Tag: tag}
 		client.send <- payload
-		log.Println("Sent to client")
 	}
 
 	s.reconciler.ReconcileSources(ociUrl, tag)
 }
 
 func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
-	log.Println("Webhook received")
+	s.logger.Info("Handling webhook", zap.String("method", r.Method), zap.String("path", r.URL.Path))
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -179,43 +177,37 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 	// Read the request body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Println("Error reading request body")
+		s.logger.Info("Error reading request body", zap.Error(err))
 		http.Error(w, "Error reading request body", http.StatusBadRequest)
 		return
 	}
 
 	if s.config.GithubSecret != "" {
-
 		// Get the GitHub signature from the request headers
 		githubSignature := r.Header.Get("X-Hub-Signature-256")
 
 		// Verify the signature
 		if !verifySignature(githubSignature, body, []byte(s.config.GithubSecret)) {
-			log.Println("Signature verification failed")
+			s.logger.Info("Signature verification failed")
 			http.Error(w, "Signature verification failed", http.StatusUnauthorized)
 			return
 		}
-		log.Println("Signature verification succeeded")
 	}
 
 	var requestPayload ExpectedPayload
 
 	err = json.Unmarshal(body, &requestPayload)
 	if err != nil {
-		log.Println(err)
+		s.logger.Info("Error unmarshalling request body", zap.Error(err))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	log.Println(PrettyEncode(requestPayload))
 
 	switch {
 	case s.validate.Struct(requestPayload.ContainerPushPayload) == nil:
 		s.HandleContainerPushPayload(requestPayload.ContainerPushPayload)
 	case s.validate.Struct(requestPayload.PingEventPayload) == nil:
-		log.Println("PingEventPayload")
-		log.Println(PrettyEncode(requestPayload.PingEventPayload))
 	default:
-		log.Println("Unknown payload")
 	}
 }
 
