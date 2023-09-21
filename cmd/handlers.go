@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
@@ -57,6 +58,7 @@ type SubscribeEventPayload struct {
 }
 
 type Client struct {
+	id         string
 	connection *websocket.Conn
 	send       chan SubscribeEventPayload
 }
@@ -83,8 +85,10 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 	log.Println("Handle new client")
 	defer c.Close()
 
+	clientUuid := uuid.New()
+
 	sendChan := make(chan SubscribeEventPayload)
-	client := &Client{connection: c, send: sendChan}
+	client := &Client{connection: c, send: sendChan, id: clientUuid.String()}
 	s.RegisterClient(client)
 	defer func() {
 		s.UnregisterClient(client)
