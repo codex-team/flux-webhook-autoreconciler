@@ -36,6 +36,10 @@ func setupClient(config Config, shutdownChan chan struct{}) {
 	reconciler := NewReconciler()
 
 	u, err := url.Parse(config.ServerEndpoint)
+	query := u.Query()
+	query.Set("authSecret", config.SubscribeSecret)
+	u.RawQuery = query.Encode()
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -50,7 +54,7 @@ func setupClient(config Config, shutdownChan chan struct{}) {
 
 	go func() {
 		for retry < maxRetries {
-			log.Printf("connecting to %s", u.String())
+			log.Printf("connecting to %s", config.ServerEndpoint)
 
 			c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 			if err != nil {
@@ -60,7 +64,7 @@ func setupClient(config Config, shutdownChan chan struct{}) {
 				continue
 			}
 			defer c.Close()
-			log.Println("connected to", u.String())
+			log.Println("connected to", config.ServerEndpoint)
 
 			retry = 0
 

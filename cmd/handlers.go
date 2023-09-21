@@ -83,6 +83,15 @@ func NewHandlers(config Config, reconciler *Reconciler) *Handlers {
 }
 
 func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
+	if s.config.SubscribeSecret != "" {
+		authSecret := r.URL.Query().Get("authSecret")
+		if authSecret != s.config.SubscribeSecret {
+			log.Println("Invalid auth secret")
+			http.Error(w, "Invalid auth secret", http.StatusUnauthorized)
+			return
+		}
+	}
+
 	c, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("upgrade:", err)

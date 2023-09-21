@@ -7,11 +7,12 @@ import (
 )
 
 type Config struct {
-	Mode           string `yaml:"mode" validate:"required,oneof=server client"`
-	GithubSecret   string `yaml:"githubSecret"`
-	Host           string `yaml:"host"`
-	Port           string `yaml:"port"`
-	ServerEndpoint string `yaml:"server_endpoint"`
+	Mode            string `yaml:"mode" validate:"required,oneof=server client"`
+	GithubSecret    string `yaml:"githubSecret"`
+	Host            string `yaml:"host"`
+	Port            string `yaml:"port"`
+	ServerEndpoint  string `yaml:"serverEndpoint"`
+	SubscribeSecret string `yaml:"subscribeSecret"`
 }
 
 func LoadConfig(configPath string) (Config, error) {
