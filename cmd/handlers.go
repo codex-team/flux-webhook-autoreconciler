@@ -1,13 +1,18 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -64,16 +69,17 @@ type Client struct {
 }
 
 type Handlers struct {
+	config     Config
 	reconciler *Reconciler
 	validate   *validator.Validate
 	upgrader   websocket.Upgrader
 	clients    map[*Client]bool
 }
 
-func NewHandlers(reconciler *Reconciler) *Handlers {
+func NewHandlers(config Config, reconciler *Reconciler) *Handlers {
 	validate := validator.New(validator.WithRequiredStructEnabled())
 	clients := make(map[*Client]bool)
-	return &Handlers{reconciler: reconciler, validate: validate, upgrader: websocket.Upgrader{}, clients: clients}
+	return &Handlers{config: config, reconciler: reconciler, validate: validate, upgrader: websocket.Upgrader{}, clients: clients}
 }
 
 func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
@@ -155,15 +161,39 @@ func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
 }
 
 func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
+	log.Println("Webhook received")
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Read the request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Println("Error reading request body")
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+
+	if s.config.GithubSecret != "" {
+
+		// Get the GitHub signature from the request headers
+		githubSignature := r.Header.Get("X-Hub-Signature-256")
+
+		// Verify the signature
+		if !verifySignature(githubSignature, body, []byte(s.config.GithubSecret)) {
+			log.Println("Signature verification failed")
+			http.Error(w, "Signature verification failed", http.StatusUnauthorized)
+			return
+		}
+		log.Println("Signature verification succeeded")
+	}
+
 	var requestPayload ExpectedPayload
 
-	err := json.NewDecoder(r.Body).Decode(&requestPayload)
+	err = json.Unmarshal(body, &requestPayload)
 	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -189,4 +219,26 @@ func (s *Handlers) UnregisterClient(client *Client) {
 	close(client.send)
 	delete(s.clients, client)
 	clientsConnected.Dec()
+}
+
+func verifySignature(signatureHeader string, payload []byte, secret []byte) bool {
+	// GitHub sends the signature in the format "sha256=XXXXX..."
+	parts := strings.SplitN(signatureHeader, "=", 2)
+	if len(parts) != 2 || parts[0] != "sha256" {
+		return false
+	}
+
+	// Calculate the HMAC
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(payload)
+	expectedMAC := mac.Sum(nil)
+
+	// Decode the provided signature
+	providedMAC, err := hex.DecodeString(parts[1])
+	if err != nil {
+		return false
+	}
+
+	// Compare the calculated HMAC with the provided HMAC
+	return hmac.Equal(providedMAC, expectedMAC)
 }

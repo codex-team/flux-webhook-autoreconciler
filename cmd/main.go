@@ -24,9 +24,9 @@ func PrettyEncode(data interface{}) string {
 	return buf.String()
 }
 
-func setupServer() {
+func setupServer(config Config) {
 	reconciler := NewReconciler()
-	handlers := NewHandlers(reconciler)
+	handlers := NewHandlers(config, reconciler)
 	http.HandleFunc("/webhook", handlers.Webhook)
 	http.HandleFunc("/subscribe", handlers.Subscribe)
 }
@@ -110,7 +110,7 @@ func main() {
 	shutdownChan := make(chan struct{})
 
 	if config.Mode == "server" {
-		setupServer()
+		setupServer(config)
 	} else {
 		setupClient(config, shutdownChan)
 	}

@@ -8,7 +8,7 @@ import (
 
 type Config struct {
 	Mode           string `yaml:"mode" validate:"required,oneof=server client"`
-	Secret         string `yaml:"secret"`
+	GithubSecret   string `yaml:"githubSecret"`
 	Host           string `yaml:"host"`
 	Port           string `yaml:"port"`
 	ServerEndpoint string `yaml:"server_endpoint"`
