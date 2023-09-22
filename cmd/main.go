@@ -2,15 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 func setupServer(config Config, logger *zap.Logger) {
@@ -21,7 +18,6 @@ func setupServer(config Config, logger *zap.Logger) {
 }
 
 func setupClient(config Config, shutdownChan chan struct{}, logger *zap.Logger) {
-	logger.Info("Starting client")
 	reconciler := NewReconciler(logger)
 
 	u, err := url.Parse(config.ServerEndpoint)
@@ -33,53 +29,10 @@ func setupClient(config Config, shutdownChan chan struct{}, logger *zap.Logger) 
 	query.Set("authSecret", config.SubscribeSecret)
 	u.RawQuery = query.Encode()
 
-	// Number of retry attempts
-	maxRetries := 5
-
-	// Time delay between retries
-	retryDelay := time.Second * 5
-
-	retry := 0
+	client := NewClient(u, reconciler, logger)
 
 	go func() {
-		for retry < maxRetries {
-			logger.Info("Connecting to server", zap.String("endpoint", config.ServerEndpoint))
-
-			c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-			if err != nil {
-				time.Sleep(retryDelay)
-				retry++
-				logger.Error("Failed to connect to server", zap.Error(err), zap.Int("retry", retry))
-				continue
-			}
-			defer c.Close()
-			logger.Info("Connected to server", zap.String("endpoint", config.ServerEndpoint))
-
-			retry = 0
-
-			for {
-				messageType, message, err := c.ReadMessage()
-				if err != nil {
-					logger.Error("Error reading message", zap.Error(err))
-					break
-				}
-
-				if messageType != websocket.BinaryMessage {
-					logger.Info("Received non-binary message", zap.String("message", string(message)))
-					continue
-				}
-
-				var payload SubscribeEventPayload
-				err = json.Unmarshal(message, &payload)
-				if err != nil {
-					logger.Error("Error unmarshalling message", zap.Error(err))
-					break
-				}
-
-				reconciler.ReconcileSources(payload.OciUrl, payload.Tag)
-			}
-
-		}
+		client.Run()
 		shutdownChan <- struct{}{}
 	}()
 }
