@@ -56,31 +56,31 @@ type SubscribeEventPayload struct {
 	Tag    string `json:"tag"`
 }
 
-type Client struct {
+type Subscriber struct {
 	id         string
 	connection *websocket.Conn
 	send       chan SubscribeEventPayload
 }
 
 type Handlers struct {
-	config     Config
-	reconciler *Reconciler
-	validate   *validator.Validate
-	upgrader   websocket.Upgrader
-	logger     *zap.Logger
-	clients    map[*Client]bool
+	config      Config
+	reconciler  *Reconciler
+	validate    *validator.Validate
+	upgrader    websocket.Upgrader
+	logger      *zap.Logger
+	subscribers map[*Subscriber]bool
 }
 
 func NewHandlers(config Config, reconciler *Reconciler, logger *zap.Logger) *Handlers {
 	validate := validator.New(validator.WithRequiredStructEnabled())
-	clients := make(map[*Client]bool)
+	subscribers := make(map[*Subscriber]bool)
 	return &Handlers{
-		config:     config,
-		reconciler: reconciler,
-		validate:   validate,
-		upgrader:   websocket.Upgrader{},
-		clients:    clients,
-		logger:     logger,
+		config:      config,
+		reconciler:  reconciler,
+		validate:    validate,
+		upgrader:    websocket.Upgrader{},
+		subscribers: subscribers,
+		logger:      logger,
 	}
 }
 
@@ -92,7 +92,7 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 	if s.config.SubscribeSecret != "" {
 		authSecret := r.URL.Query().Get("authSecret")
 		if authSecret != s.config.SubscribeSecret {
-			s.logger.Info("Invalid auth secret from client", zap.String("clientId", clientId))
+			s.logger.Info("Invalid auth secret from subscr", zap.String("clientId", clientId))
 			http.Error(w, "Invalid auth secret", http.StatusUnauthorized)
 			return
 		}
@@ -106,13 +106,13 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 
 	sendChan := make(chan SubscribeEventPayload)
-	client := &Client{connection: c, send: sendChan, id: clientId}
-	s.RegisterClient(client)
+	subscr := &Subscriber{connection: c, send: sendChan, id: clientId}
+	s.RegisterClient(subscr)
 	defer func() {
-		s.UnregisterClient(client)
-		s.logger.Info("Unregistered client", zap.String("clientId", clientId))
+		s.UnregisterClient(subscr)
+		s.logger.Info("Unregistered subscr", zap.String("clientId", clientId))
 	}()
-	s.logger.Info("Registered client", zap.String("clientId", clientId))
+	s.logger.Info("Registered subscr", zap.String("clientId", clientId))
 
 	if err := c.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
 		s.logger.Error("SetReadDeadline error", zap.Error(err), zap.String("clientId", clientId))
@@ -127,9 +127,9 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		select {
-		case message, more := <-client.send:
+		case message, more := <-subscr.send:
 			if !more {
-				s.logger.Info("Client send channel closed", zap.String("clientId", clientId))
+				s.logger.Info("Subscriber send channel closed", zap.String("clientId", clientId))
 				break
 			}
 
@@ -159,9 +159,9 @@ func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
 	tag := payload.RegistryPackage.PackageVersion.ContainerMetadata.Tag.Name
 	ociUrl := fmt.Sprintf("oci://ghcr.io/%s/%s", payload.RegistryPackage.Namespace, payload.RegistryPackage.Name)
 
-	for client := range s.clients {
+	for subscr := range s.subscribers {
 		payload := SubscribeEventPayload{OciUrl: ociUrl, Tag: tag}
-		client.send <- payload
+		subscr.send <- payload
 	}
 
 	s.reconciler.ReconcileSources(ociUrl, tag)
@@ -211,14 +211,14 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Handlers) RegisterClient(client *Client) {
-	s.clients[client] = true
+func (s *Handlers) RegisterClient(subscr *Subscriber) {
+	s.subscribers[subscr] = true
 	clientsConnected.Inc()
 }
 
-func (s *Handlers) UnregisterClient(client *Client) {
-	close(client.send)
-	delete(s.clients, client)
+func (s *Handlers) UnregisterClient(subscr *Subscriber) {
+	close(subscr.send)
+	delete(s.subscribers, subscr)
 	clientsConnected.Dec()
 }
 
