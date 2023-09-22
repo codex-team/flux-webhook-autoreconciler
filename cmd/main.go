@@ -97,18 +97,32 @@ func WithLogging(h http.Handler, logger *zap.Logger) http.Handler {
 
 func main() {
 	var loggerMode string
-	flag.StringVar(&loggerMode, "logger", "prod", "Logger mode")
+	flag.StringVar(&loggerMode, "log-mode", "prod", "Logger mode")
+
+	var logLevel string
+	flag.StringVar(&logLevel, "log-level", "info", "Log level")
 
 	var configPath string
 	flag.StringVar(&configPath, "config", "config.yaml", "Path to config file")
 	flag.Parse()
 
-	var logger *zap.Logger
+	var loggerConfig zap.Config
 	if loggerMode == "dev" {
-		logger, _ = zap.NewDevelopment()
+		loggerConfig = zap.NewDevelopmentConfig()
 	} else {
-		logger, _ = zap.NewProduction()
+		loggerConfig = zap.NewProductionConfig()
 	}
+
+	level, err := zap.ParseAtomicLevel(logLevel)
+
+	if err != nil {
+		logger := zap.Must(zap.NewProduction())
+		logger.Fatal("Failed to parse log level", zap.Error(err))
+	}
+
+	loggerConfig.Level = level
+	logger := zap.Must(loggerConfig.Build())
+	defer logger.Sync()
 
 	config, err := LoadConfig(configPath)
 
