@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -69,6 +70,7 @@ type Handlers struct {
 	upgrader    websocket.Upgrader
 	logger      *zap.Logger
 	subscribers map[*Subscriber]bool
+	m           sync.Mutex
 }
 
 func NewHandlers(config Config, reconciler *Reconciler, logger *zap.Logger) *Handlers {
@@ -212,11 +214,17 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Handlers) RegisterClient(subscr *Subscriber) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	s.subscribers[subscr] = true
 	clientsConnected.Inc()
 }
 
 func (s *Handlers) UnregisterClient(subscr *Subscriber) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	close(subscr.send)
 	delete(s.subscribers, subscr)
 	clientsConnected.Dec()
