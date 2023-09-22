@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"net/url"
 	"time"
@@ -35,6 +36,7 @@ func (r *Client) Run() {
 	for r.retry < maxRetries {
 		r.logger.Info("Connecting to server")
 
+		connectionAttempts.Inc()
 		c, _, err := websocket.DefaultDialer.Dial(r.serverEndpoint.String(), nil)
 		if err != nil {
 			time.Sleep(retryDelay)
@@ -51,11 +53,13 @@ func (r *Client) Run() {
 			messageType, message, err := c.ReadMessage()
 			if err != nil {
 				r.logger.Error("Error reading message", zap.Error(err))
+				processedMessages.With(prometheus.Labels{"status": "fail"}).Inc()
 				break
 			}
 
 			if messageType != websocket.BinaryMessage {
 				r.logger.Info("Received non-binary message", zap.String("message", string(message)))
+				processedMessages.With(prometheus.Labels{"status": "fail"}).Inc()
 				continue
 			}
 
@@ -63,11 +67,13 @@ func (r *Client) Run() {
 			err = json.Unmarshal(message, &payload)
 			if err != nil {
 				r.logger.Error("Error unmarshalling message", zap.Error(err))
+				processedMessages.With(prometheus.Labels{"status": "fail"}).Inc()
 				break
 			}
 
 			r.logger.Info("Received message", zap.String("ociUrl", payload.OciUrl), zap.String("tag", payload.Tag))
 			r.reconciler.ReconcileSources(payload.OciUrl, payload.Tag)
+			processedMessages.With(prometheus.Labels{"status": "success"}).Inc()
 		}
 
 	}

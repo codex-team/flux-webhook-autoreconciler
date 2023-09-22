@@ -83,6 +83,7 @@ func main() {
 		logger.Fatal("Failed to load config", zap.Error(err))
 	}
 
+	setupMetrics(config)
 	http.Handle("/metrics", promhttp.Handler())
 
 	shutdownChan := make(chan struct{})

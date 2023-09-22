@@ -9,6 +9,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
@@ -173,6 +174,7 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Handling webhook", zap.String("method", r.Method), zap.String("path", r.URL.Path))
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		webhooksHandled.With(prometheus.Labels{"status": "fail"}).Inc()
 		return
 	}
 
@@ -181,6 +183,7 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Info("Error reading request body", zap.Error(err))
 		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		webhooksHandled.With(prometheus.Labels{"status": "fail"}).Inc()
 		return
 	}
 
@@ -192,6 +195,7 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 		if !verifySignature(githubSignature, body, []byte(s.config.GithubSecret)) {
 			s.logger.Info("Signature verification failed")
 			http.Error(w, "Signature verification failed", http.StatusUnauthorized)
+			webhooksHandled.With(prometheus.Labels{"status": "fail"}).Inc()
 			return
 		}
 	}
@@ -202,6 +206,7 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Info("Error unmarshalling request body", zap.Error(err))
 		w.WriteHeader(http.StatusBadRequest)
+		webhooksHandled.With(prometheus.Labels{"status": "fail"}).Inc()
 		return
 	}
 
@@ -211,6 +216,7 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 	case s.validate.Struct(requestPayload.PingEventPayload) == nil:
 	default:
 	}
+	webhooksHandled.With(prometheus.Labels{"status": "success"}).Inc()
 }
 
 func (s *Handlers) RegisterClient(subscr *Subscriber) {
