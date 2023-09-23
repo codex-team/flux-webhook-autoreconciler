@@ -13,18 +13,16 @@ import (
 	"path/filepath"
 )
 
-func getConfig() *rest.Config {
+func getConfig() (*rest.Config, error) {
 	// Try in-cluster configuration
 	config, err := rest.InClusterConfig()
-	if err == nil {
-		return config
-	}
-
-	// Fallback to kubeconfig
-	kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		log.Fatal(err)
+		// Fallback to kubeconfig
+		kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
+		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	schema := scheme.Scheme
@@ -39,34 +37,44 @@ func getConfig() *rest.Config {
 	config.NegotiatedSerializer = serializer.NewCodecFactory(schema)
 	//config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
 
-	return config
+	return config, nil
 }
 
-func getClient() *kubernetes.Clientset {
-	config := getConfig()
+func getClient() (*kubernetes.Clientset, error) {
+	config, err := getConfig()
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	return client
+	return client, nil
 }
 
-func getRestClient() *rest.RESTClient {
-	config := getConfig()
+func getRestClient() (*rest.RESTClient, error) {
+	config, err := getConfig()
+	if err != nil {
+		return nil, err
+	}
 	client, err := rest.RESTClientFor(config)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	return client
+	return client, nil
 }
 
-func getDynamicClient() *dynamic.DynamicClient {
-	config := getConfig()
+func getDynamicClient() (*dynamic.DynamicClient, error) {
+	config, err := getConfig()
+	if err != nil {
+		return nil, err
+	}
 	client, err := dynamic.NewForConfig(config)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-	return client
+	return client, nil
 }

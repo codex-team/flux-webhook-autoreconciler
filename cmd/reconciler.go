@@ -17,18 +17,16 @@ type Reconciler struct {
 	logger     *zap.Logger
 }
 
-func NewReconciler(logger *zap.Logger) *Reconciler {
+func NewReconciler(client *rest.RESTClient, logger *zap.Logger) *Reconciler {
 	return &Reconciler{
-		restClient: getRestClient(),
+		restClient: client,
 		logger:     logger,
 	}
 }
 
 func (r *Reconciler) ReconcileSources(ociUrl string, tag string) {
-	restClient := getRestClient()
-
 	var res sourceController.OCIRepositoryList
-	err := restClient.Get().Resource("ocirepositories").Namespace("").Do(context.Background()).Into(&res)
+	err := r.restClient.Get().Resource("ocirepositories").Namespace("").Do(context.Background()).Into(&res)
 	if err != nil {
 		r.logger.Error("Failed to get OCIRepositories", zap.Error(err))
 	}
@@ -46,8 +44,6 @@ func (r *Reconciler) ReconcileSources(ociUrl string, tag string) {
 }
 
 func (r *Reconciler) annotateRepository(repository sourceController.OCIRepository) error {
-	restClient := getRestClient()
-
 	patch := struct {
 		Metadata struct {
 			Annotations map[string]string `json:"annotations"`
@@ -61,7 +57,7 @@ func (r *Reconciler) annotateRepository(repository sourceController.OCIRepositor
 	patchJson, _ := json.Marshal(patch)
 
 	var res sourceController.OCIRepository
-	return restClient.
+	return r.restClient.
 		Patch(types.MergePatchType).
 		Resource("ocirepositories").
 		Namespace(repository.Namespace).

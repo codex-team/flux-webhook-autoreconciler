@@ -11,14 +11,22 @@ import (
 )
 
 func setupServer(config Config, logger *zap.Logger) {
-	reconciler := NewReconciler(logger)
+	k8sClient, err := getRestClient()
+	if err != nil {
+		logger.Fatal("Failed to get Kubernetes client", zap.Error(err))
+	}
+	reconciler := NewReconciler(k8sClient, logger)
 	handlers := NewHandlers(config, reconciler, logger)
 	http.Handle("/webhook", WithLogging(http.HandlerFunc(handlers.Webhook), logger))
 	http.Handle("/subscribe", WithLogging(http.HandlerFunc(handlers.Subscribe), logger))
 }
 
 func setupClient(config Config, shutdownChan chan struct{}, logger *zap.Logger) {
-	reconciler := NewReconciler(logger)
+	k8sClient, err := getRestClient()
+	if err != nil {
+		logger.Fatal("Failed to get Kubernetes client", zap.Error(err))
+	}
+	reconciler := NewReconciler(k8sClient, logger)
 
 	u, err := url.Parse(config.ServerEndpoint)
 	if err != nil {
