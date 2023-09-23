@@ -44,6 +44,14 @@ func LoadConfig(configPath string) (Config, error) {
 		config.ServerEndpoint = "ws://localhost:3400/subscribe"
 	}
 
+	if os.Getenv("GITHUB_WEBHOOK_SECRET") != "" {
+		config.GithubSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
+	}
+
+	if os.Getenv("SUBSCRIBE_SECRET") != "" {
+		config.SubscribeSecret = os.Getenv("SUBSCRIBE_SECRET")
+	}
+
 	validate := validator.New(validator.WithRequiredStructEnabled())
 
 	if err := validate.Struct(config); err != nil {
