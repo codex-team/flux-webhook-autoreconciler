@@ -9,7 +9,7 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  build:
+  build_image:
     runs-on: ubuntu-22.04
 
     steps:
@@ -49,3 +49,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           push: true
+
+  push_chart:
+    runs-on: ubuntu-latest
+    needs: build_image
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: lint chart
+        run: helm lint
+
+      - name: Helm Push
+        uses: bsord/helm-push@v4
+        with:
+          useOCIRegistry: true
+          registry-url: oci://ghcr.io/${{ github.repository }}/chart
+          username: ${{ github.actor }}
+          access-token: ${{ secrets.GITHUB_TOKEN }}
+          force: false
+          chart-folder: chart

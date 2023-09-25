@@ -1,0 +1,11 @@
+{{- if not .Values.config.existingConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "flux-webhook-autoreconciler.fullname" . }}
+  labels:
+    {{- include "flux-webhook-autoreconciler.labels" . | nindent 4 }}
+data:
+  config.yaml: |-
+    {{- .Values.config.values | toYaml | nindent 4 }}
+{{- end }}
