@@ -59,6 +59,7 @@ jobs:
 
       - name: lint chart
         run: helm lint
+        working-directory: chart
 
       - name: Helm Push
         uses: bsord/helm-push@v4
