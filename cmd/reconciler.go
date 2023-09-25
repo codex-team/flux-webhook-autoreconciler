@@ -36,9 +36,9 @@ func (r *Reconciler) ReconcileSources(ociUrl string, tag string) {
 			err := r.annotateRepository(ociRepository)
 			if err != nil {
 				r.logger.Error("Failed to annotate OCIRepository", zap.Error(err))
-				reconciledCount.With(prometheus.Labels{"name": ociRepository.Name, "status": "fail"}).Inc()
+				reconciledCount.With(prometheus.Labels{"source": ociRepository.Name, "status": "fail"}).Inc()
 			}
-			reconciledCount.With(prometheus.Labels{"name": ociRepository.Name, "status": "success"}).Inc()
+			reconciledCount.With(prometheus.Labels{"source": ociRepository.Name, "status": "success"}).Inc()
 		}
 	}
 }
