@@ -6,7 +6,10 @@ ARG TARGETOS
 ARG TARGETARCH
 
 WORKDIR /app/
-ADD . .
+
+COPY go.* .
+RUN go mod download
+COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o flux-webhook-authreconciler ./cmd
 
 FROM --platform=${TARGETPLATFORM:-linux/amd64} scratch
