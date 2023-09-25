@@ -22,6 +22,9 @@ secrets:
   githubSecretKey: github_secret
   subscribeSecretKey: subscribe_secret
 
+networkPolicy:
+  enabled: false
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""

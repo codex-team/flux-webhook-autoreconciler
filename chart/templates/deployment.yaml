@@ -15,8 +15,11 @@ spec:
       {{- include "flux-webhook-autoreconciler.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        {{- if not .Values.config.existingConfigMap }}
+        checksum/config: {{ .Values.config.values | toString | sha256sum }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
