@@ -15,4 +15,5 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-w -s
 FROM --platform=${TARGETPLATFORM:-linux/amd64} scratch
 WORKDIR /app/
 COPY --from=builder /app/flux-webhook-authreconciler /app/flux-webhook-authreconciler
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 ENTRYPOINT ["/app/flux-webhook-authreconciler"]
