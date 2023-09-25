@@ -4,24 +4,48 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 )
 
-func setupServer(config Config, logger *zap.Logger) {
+func runServer(ctx context.Context, wg *sync.WaitGroup, config Config, logger *zap.Logger) {
+	defer wg.Done()
+	addr := fmt.Sprintf("%s:%s", config.Host, config.Port)
+
 	k8sClient, err := getRestClient()
 	if err != nil {
 		logger.Fatal("Failed to get Kubernetes client", zap.Error(err))
 	}
+	mux := http.NewServeMux()
 	reconciler := NewReconciler(k8sClient, logger)
 	handlers := NewHandlers(config, reconciler, logger)
-	http.Handle("/webhook", WithLogging(http.HandlerFunc(handlers.Webhook), logger))
-	http.Handle("/subscribe", WithLogging(http.HandlerFunc(handlers.Subscribe), logger))
+	mux.Handle("/webhook", WithLogging(http.HandlerFunc(handlers.Webhook), logger))
+	mux.Handle("/subscribe", WithLogging(http.HandlerFunc(handlers.Subscribe), logger))
+	server := &http.Server{Addr: addr, Handler: mux}
+
+	go func() {
+		logger.Info("Starting server", zap.String("addr", addr))
+		err := server.ListenAndServe()
+		if err != nil {
+			logger.Fatal("Failed to start server", zap.Error(err))
+		}
+	}()
+
+	<-ctx.Done()
+	logger.Info("Shutting down server")
+
+	if err := server.Shutdown(context.Background()); err != nil {
+		logger.Fatal("Failed to shutdown server", zap.Error(err))
+	}
 }
 
-func setupClient(config Config, shutdownChan chan struct{}, logger *zap.Logger) {
+func runClient(ctx context.Context, wg *sync.WaitGroup, config Config, logger *zap.Logger) {
+	defer wg.Done()
 	k8sClient, err := getRestClient()
 	if err != nil {
 		logger.Fatal("Failed to get Kubernetes client", zap.Error(err))
@@ -39,10 +63,7 @@ func setupClient(config Config, shutdownChan chan struct{}, logger *zap.Logger) 
 
 	client := NewClient(u, reconciler, logger)
 
-	go func() {
-		client.Run()
-		shutdownChan <- struct{}{}
-	}()
+	client.Run(ctx)
 }
 
 func WithLogging(h http.Handler, logger *zap.Logger) http.Handler {
@@ -91,34 +112,28 @@ func main() {
 		logger.Fatal("Failed to load config", zap.Error(err))
 	}
 
-	setupMetrics(config)
-	http.Handle("/metrics", promhttp.Handler())
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
 
-	shutdownChan := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
 
+	wg.Add(1)
 	if config.Mode == "server" {
-		setupServer(config, logger)
+		go runServer(ctx, wg, config, logger)
 	} else {
-		setupClient(config, shutdownChan, logger)
+		go runClient(ctx, wg, config, logger)
 	}
 
-	addr := fmt.Sprintf("%s:%s", config.Host, config.Port)
-
-	server := &http.Server{Addr: addr}
+	if config.Metrics.Enabled {
+		go runMetricsServer(ctx, config, logger)
+	}
 
 	go func() {
-		logger.Info("Starting server", zap.String("addr", addr))
-		err := server.ListenAndServe()
-		if err != nil {
-			logger.Fatal("Failed to start server", zap.Error(err))
-		}
+		<-signalCh
+		logger.Info("Received signal, shutting down")
+		cancel()
 	}()
-	select {
-	case <-shutdownChan:
-		logger.Info("Shutting down server")
-		// Received a shutdown signal, so shut down the server gracefully
-		if err := server.Shutdown(context.Background()); err != nil {
-			logger.Fatal("Failed to shutdown server", zap.Error(err))
-		}
-	}
+
+	wg.Wait()
 }

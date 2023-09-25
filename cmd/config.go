@@ -13,6 +13,11 @@ type Config struct {
 	Port            string `yaml:"port"`
 	ServerEndpoint  string `yaml:"serverEndpoint"`
 	SubscribeSecret string `yaml:"subscribeSecret"`
+	Metrics         struct {
+		Enabled bool   `yaml:"enabled"`
+		Host    string `yaml:"host"`
+		Port    string `yaml:"port"`
+	} `yaml:"metrics"`
 }
 
 func LoadConfig(configPath string) (Config, error) {

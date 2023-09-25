@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
+	"net/http"
 )
 
 const metricsNamespace = "flux_reconciler"
@@ -33,6 +37,28 @@ var (
 		Help: "The total number of processed messages",
 	}, []string{"status"})
 )
+
+func runMetricsServer(ctx context.Context, config Config, logger *zap.Logger) {
+	setupMetrics(config)
+	addr := fmt.Sprintf("%s:%s", config.Metrics.Host, config.Metrics.Port)
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	server := &http.Server{Addr: addr, Handler: mux}
+	go func() {
+		logger.Info("Starting metrics server", zap.String("addr", addr))
+		err := server.ListenAndServe()
+		if err != nil {
+			logger.Fatal("Failed to start server metrics", zap.Error(err))
+		}
+	}()
+
+	<-ctx.Done()
+	logger.Info("Shutting down metrics server")
+
+	if err := server.Shutdown(context.Background()); err != nil {
+		logger.Fatal("Failed to shutdown metrics server", zap.Error(err))
+	}
+}
 
 func setupMetrics(config Config) {
 	prometheus.MustRegister(reconciledCount)

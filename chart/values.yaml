@@ -16,6 +16,14 @@ config:
     port: 3400
     githubSecret: ""
     subscribeSecret: ""
+    metrics:
+      enabled: true
+      host: 0.0.0.0
+      port: 8888
+
+metrics:
+  enabled: true
+  port: 8888
 
 secrets:
   existingSecret: ""

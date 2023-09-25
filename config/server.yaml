@@ -3,3 +3,7 @@ host: 127.0.0.1
 port: 3400
 githubSecret: ""
 subscribeSecret: "subscribeSuperSecret"
+metrics:
+  enabled: true
+  host: 127.0.0.1
+  port: 8888
