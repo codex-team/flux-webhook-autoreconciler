@@ -161,6 +161,7 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
 	tag := payload.RegistryPackage.PackageVersion.ContainerMetadata.Tag.Name
 	ociUrl := fmt.Sprintf("oci://ghcr.io/%s/%s", payload.RegistryPackage.Namespace, payload.RegistryPackage.Name)
+	s.logger.Info("Handling container push payload", zap.String("ociUrl", ociUrl), zap.String("tag", tag))
 
 	for subscr := range s.subscribers {
 		payload := SubscribeEventPayload{OciUrl: ociUrl, Tag: tag}

@@ -20,7 +20,7 @@ var (
 	reconciledCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: fmt.Sprintf("%s_reconciliations_total", metricsNamespace),
 		Help: "The total number of reconciliations",
-	}, []string{"source", "status"})
+	}, []string{"name", "status", "namespace"})
 
 	processedMessages = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: fmt.Sprintf("%s_processed_messages_total", metricsNamespace),
