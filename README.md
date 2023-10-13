@@ -17,6 +17,8 @@ This project has two main parts:
 
 Basically, the server waits for webhooks on the `/webhook` endpoint, and the client connects to the server on the `/subscribe` endpoint using WebSockets. You can have as many clients as you want (like, one client for each Kubernetes cluster). Both the server and client take care of reconciling the sources. 
 
+To figure out which sources need reconciling when a webhook comes in, the reconciler takes the package name from the webhook data, checks out all the sources, and then matches it up with the package name in each source. If there's a match, that source gets reconciled.
+
 ## Installation
 
 There is helm chart available published as OCI artifact in GitHub Packages [here](https://github.com/codex-team/flux-webhook-autoreconciler/pkgs/container/flux-webhook-autoreconciler%2Fchart%2Fflux-webhook-autoreconciler).
@@ -65,10 +67,21 @@ The configuration is done via YAML file that is passed to the container via `--c
 
 You can find the example configuration in [config](./config) folder both for `server` and `client` modes.
 
+You'll also need to set up a GitHub webhook. You have the choice to do this for your whole organization or on a per-repo basis. For the how-to, check out the [official docs](https://docs.github.com/en/webhooks/using-webhooks/creating-webhooks). 
+To get the webhook working, you'll need to sort out a few things:
+
+- Payload URL: `https://<your-domain>/webhook`
+- Content type: `application/json`
+- Secret (optional but recommended)
+- In the section "Which events would you like to trigger this webhook?", go for "Let me select individual events." and then tick the box for the "Registry packages" event.
+
+And that’s it! Now you can push a new package to your GitHub registry and it will be automatically reconciled by Flux.
+
 ## Todo
 
 - [ ] Add support for other kinds of sources. Right now, it’s just `OCIRepository`.
 - [ ] Make it work with other types of webhook data. For now, it’s only set up for GitHub-like payloads.
+- [ ] Add different filtering abilities, like filtering by package name or repo labels.
 
 # Contribute
 
