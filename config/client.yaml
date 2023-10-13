@@ -1,7 +1,7 @@
 mode: client
-serverEndpoint: ws://localhost:3400/subscribe
 host: 127.0.0.1
 port: 3401
+serverEndpoint: ws://localhost:3400/subscribe
 subscribeSecret: "subscribeSuperSecret"
 metrics:
   enabled: true
