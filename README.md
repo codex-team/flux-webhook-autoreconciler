@@ -15,7 +15,7 @@ This project has two main parts:
 - `Server`: It gets the webhooks, reconciles the sources, and tells the clients about what happened.
 - `Client`: (Optional) It listens to the server and reconciles the sources. You can run just the server if you want, but having a client is handy if you have multiple clusters. You send one webhook to the server, and it’ll reconcile the sources in all your clusters through their clients.
 
-- Basically, the server waits for webhooks on the `/webhook` endpoint, and the client connects to the server on the `/subscribe` endpoint using WebSockets. You can have as many clients as you want (like, one client for each Kubernetes cluster). Both the server and client take care of reconciling the sources. 
+Basically, the server waits for webhooks on the `/webhook` endpoint, and the client connects to the server on the `/subscribe` endpoint using WebSockets. You can have as many clients as you want (like, one client for each Kubernetes cluster). Both the server and client take care of reconciling the sources. 
 
 ## Installation
 
