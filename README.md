@@ -44,7 +44,7 @@ spec:
   chart:
     spec:
       chart: flux-webhook-autoreconciler
-      version: '0.0.8' # replace with the latest version from here https://github.com/codex-team/flux-webhook-autoreconciler/pkgs/container/flux-webhook-autoreconciler%2Fchart%2Fflux-webhook-autoreconciler
+      version: '1.0.0' # replace with the latest version from here https://github.com/codex-team/flux-webhook-autoreconciler/pkgs/container/flux-webhook-autoreconciler%2Fchart%2Fflux-webhook-autoreconciler
       sourceRef:
         kind: HelmRepository
         name: flux-webhook-autoreconciler
