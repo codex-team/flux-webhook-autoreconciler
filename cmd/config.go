@@ -10,6 +10,7 @@ import (
 type Config struct {
 	Mode            string `yaml:"mode" validate:"required,oneof=server client"`
 	GithubSecret    string `yaml:"githubSecret"`
+	GenericSecret   string `yaml:"genericSecret"`
 	Host            string `yaml:"host"`
 	Port            string `yaml:"port"`
 	ServerEndpoint  string `yaml:"serverEndpoint"`

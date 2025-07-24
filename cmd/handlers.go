@@ -46,6 +46,11 @@ type ExpectedPayload struct {
 	PushEventPayload
 }
 
+type GenericHookPayload struct {
+	Repository string
+	Tag        string
+}
+
 type PingEventPayload struct {
 	HookId uint32 `json:"hook_id" validate:"required"`
 }
@@ -174,9 +179,7 @@ func (s *Handlers) Subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
-	tag := payload.RegistryPackage.PackageVersion.ContainerMetadata.Tag.Name
-	ociUrl := fmt.Sprintf("oci://ghcr.io/%s/%s", payload.RegistryPackage.Namespace, payload.RegistryPackage.Name)
+func (s *Handlers) HandleNewVersion(ociUrl string, tag string) {
 	s.logger.Info("Handling container push payload", zap.String("ociUrl", ociUrl), zap.String("tag", tag))
 
 	for subscr := range s.subscribers {
@@ -222,7 +225,13 @@ func (s *Handlers) HandlePushPayload(payload PushEventPayload) {
 	}
 }
 
-func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
+	tag := payload.RegistryPackage.PackageVersion.ContainerMetadata.Tag.Name
+	ociUrl := fmt.Sprintf("oci://ghcr.io/%s/%s", payload.RegistryPackage.Namespace, payload.RegistryPackage.Name)
+	s.HandleNewVersion(ociUrl, tag)
+}
+
+func (s *Handlers) WebhookGithub(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Handling webhook", zap.String("method", r.Method), zap.String("path", r.URL.Path))
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -270,6 +279,57 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 	case s.validate.Struct(requestPayload.PingEventPayload) == nil:
 	default:
 	}
+	webhooksHandled.With(prometheus.Labels{"status": "success"}).Inc()
+}
+
+func (s *Handlers) WebhookGenericOCI(w http.ResponseWriter, r *http.Request) {
+	s.logger.Info("Handling webhook", zap.String("method", r.Method), zap.String("path", r.URL.Path))
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		webhooksHandled.With(prometheus.Labels{"status": "fail"}).Inc()
+		return
+	}
+
+	// Read the request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		s.logger.Info("Error reading request body", zap.Error(err))
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		webhooksHandled.With(prometheus.Labels{"status": "fail"}).Inc()
+		return
+	}
+
+	if s.config.GenericSecret != "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			s.logger.Info("Missing or invalid Authorization header")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			webhooksHandled.With(prometheus.Labels{"status": "fail"}).Inc()
+			return
+		}
+
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token != s.config.GenericSecret {
+			s.logger.Info("Invalid bearer token")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			webhooksHandled.With(prometheus.Labels{"status": "fail"}).Inc()
+			return
+		}
+	}
+
+	fmt.Println("test")
+
+	var requestPayload GenericHookPayload
+
+	err = json.Unmarshal(body, &requestPayload)
+	if err != nil {
+		s.logger.Info("Error unmarshalling request body", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		webhooksHandled.With(prometheus.Labels{"status": "fail"}).Inc()
+		return
+	}
+
+	s.HandleNewVersion(requestPayload.Repository, requestPayload.Tag)
 	webhooksHandled.With(prometheus.Labels{"status": "success"}).Inc()
 }
 
