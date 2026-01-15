@@ -77,11 +77,12 @@ To get the webhook working, you'll need to sort out a few things:
 
 And that’s it! Now when you push a new package to your GitHub registry or push commits to a GitHub repository, the matching Flux `OCIRepository` and `GitRepository` resources will be automatically reconciled.
 
-## Todo
+## Limitations
 
-- [ ] Add support for other kinds of sources. Right now, it’s just `OCIRepository`.
-- [ ] Make it work with other types of webhook data. For now, it’s only set up for GitHub-like payloads.
-- [ ] Add different filtering abilities, like filtering by package name or repo labels.
+- It only supports GitHub webhooks.
+- It only supports `OCIRepository` and `GitRepository` resources.
+- It only supports `published` events for `OCIRepository` resources.
+- It only supports `push` events for `GitRepository` resources.
 
 # Contribute
 
