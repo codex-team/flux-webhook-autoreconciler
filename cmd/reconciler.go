@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+
 	fluxMeta "github.com/fluxcd/pkg/apis/meta"
-	sourceController "github.com/fluxcd/source-controller/api/v1beta2"
+	sourceController "github.com/fluxcd/source-controller/api/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

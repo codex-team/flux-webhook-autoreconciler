@@ -1,7 +1,7 @@
 package main
 
 import (
-	sourceController "github.com/fluxcd/source-controller/api/v1beta2"
+	sourceController "github.com/fluxcd/source-controller/api/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
