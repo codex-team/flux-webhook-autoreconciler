@@ -1,6 +1,6 @@
 apiVersion: v2
 name: flux-webhook-autoreconciler
-description: A Helm chart for Kubernetes
+description: A Helm chart for a Flux webhook auto-reconciler that exposes a single GitHub webhook endpoint and automatically reconciles matching Flux sources across clusters.
 type: application
-version: "1.0.0"
-appVersion: "v1.0.0"
+version: "2.0.0"
+appVersion: "v2.0.0"

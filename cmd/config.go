@@ -1,9 +1,10 @@
 package main
 
 import (
+	"os"
+
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
-	"os"
 )
 
 type Config struct {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	fluxMeta "github.com/fluxcd/pkg/apis/meta"
 	sourceController "github.com/fluxcd/source-controller/api/v1"
@@ -44,6 +45,55 @@ func (r *Reconciler) ReconcileSources(ociUrl string, tag string) {
 	}
 }
 
+func (r *Reconciler) ReconcileGitRepositories(repoURLs []string, ref string) {
+	var res sourceController.GitRepositoryList
+	err := r.restClient.Get().Resource("gitrepositories").Namespace("").Do(context.Background()).Into(&res)
+	if err != nil {
+		r.logger.Error("Failed to get GitRepositories", zap.Error(err))
+		return
+	}
+
+	normalizedTargets := make(map[string]struct{}, len(repoURLs))
+	for _, u := range repoURLs {
+		n := normalizeGitURL(u)
+		if n != "" {
+			normalizedTargets[n] = struct{}{}
+		}
+	}
+
+	branch := parseBranchFromRef(ref)
+
+	for _, gitRepository := range res.Items {
+		normURL := normalizeGitURL(gitRepository.Spec.URL)
+		if normURL == "" {
+			continue
+		}
+
+		if _, ok := normalizedTargets[normURL]; !ok {
+			continue
+		}
+
+		// If GitRepository has a branch reference specified, reconcile only when it matches
+		if gitRepository.Spec.Reference != nil && gitRepository.Spec.Reference.Branch != "" && branch != "" && gitRepository.Spec.Reference.Branch != branch {
+			continue
+		}
+
+		r.logger.Info("Reconciling GitRepository",
+			zap.String("name", gitRepository.Name),
+			zap.String("namespace", gitRepository.Namespace),
+			zap.String("url", gitRepository.Spec.URL),
+			zap.String("ref", ref),
+		)
+		err := r.annotateGitRepository(gitRepository)
+		if err != nil {
+			r.logger.Error("Failed to annotate GitRepository", zap.Error(err))
+			reconciledCount.With(prometheus.Labels{"name": gitRepository.Name, "status": "fail", "namespace": gitRepository.Namespace}).Inc()
+		} else {
+			reconciledCount.With(prometheus.Labels{"name": gitRepository.Name, "status": "success", "namespace": gitRepository.Namespace}).Inc()
+		}
+	}
+}
+
 func (r *Reconciler) annotateRepository(repository sourceController.OCIRepository) error {
 	patch := struct {
 		Metadata struct {
@@ -66,4 +116,75 @@ func (r *Reconciler) annotateRepository(repository sourceController.OCIRepositor
 		Body(patchJson).
 		Do(context.Background()).
 		Into(&res)
+}
+
+func (r *Reconciler) annotateGitRepository(repository sourceController.GitRepository) error {
+	patch := struct {
+		Metadata struct {
+			Annotations map[string]string `json:"annotations"`
+		} `json:"metadata"`
+	}{}
+
+	patch.Metadata.Annotations = make(map[string]string)
+
+	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
+
+	patchJson, _ := json.Marshal(patch)
+
+	var res sourceController.GitRepository
+	return r.restClient.
+		Patch(types.MergePatchType).
+		Resource("gitrepositories").
+		Namespace(repository.Namespace).
+		Name(repository.Name).
+		Body(patchJson).
+		Do(context.Background()).
+		Into(&res)
+}
+
+func normalizeGitURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	raw = strings.TrimSuffix(raw, ".git")
+
+	// SSH form: git@github.com:owner/repo
+	if strings.HasPrefix(raw, "git@") {
+		parts := strings.SplitN(raw, ":", 2)
+		if len(parts) != 2 {
+			return strings.ToLower(raw)
+		}
+		host := strings.TrimPrefix(parts[0], "git@")
+		path := parts[1]
+		return strings.ToLower(host + "/" + strings.TrimPrefix(path, "/"))
+	}
+
+	// ssh://git@github.com/owner/repo
+	if strings.HasPrefix(raw, "ssh://git@") {
+		raw = strings.TrimPrefix(raw, "ssh://git@")
+		parts := strings.SplitN(raw, "/", 2)
+		if len(parts) != 2 {
+			return strings.ToLower(raw)
+		}
+		host := parts[0]
+		path := parts[1]
+		return strings.ToLower(host + "/" + strings.TrimPrefix(path, "/"))
+	}
+
+	// Strip known URL schemes
+	if idx := strings.Index(raw, "://"); idx != -1 {
+		raw = raw[idx+3:]
+	}
+
+	return strings.ToLower(strings.TrimPrefix(raw, "/"))
+}
+
+func parseBranchFromRef(ref string) string {
+	const headsPrefix = "refs/heads/"
+	if strings.HasPrefix(ref, headsPrefix) {
+		return ref[len(headsPrefix):]
+	}
+	return ""
 }

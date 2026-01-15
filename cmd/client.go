@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net/url"
+	"time"
+
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
-	"net/url"
-	"time"
 )
 
 const (
@@ -76,8 +77,25 @@ func (r *Client) Run(ctx context.Context) {
 					break
 				}
 
-				r.logger.Info("Received message", zap.String("ociUrl", payload.OciUrl), zap.String("tag", payload.Tag))
-				r.reconciler.ReconcileSources(payload.OciUrl, payload.Tag)
+				r.logger.Info("Received message",
+					zap.String("ociUrl", payload.OciUrl),
+					zap.String("tag", payload.Tag),
+					zap.String("gitRepo", payload.GitRepo),
+					zap.String("ref", payload.Ref),
+				)
+
+				// Reconcile OCI repositories when OCI info is present
+				if payload.OciUrl != "" && payload.Tag != "" {
+					r.reconciler.ReconcileSources(payload.OciUrl, payload.Tag)
+				}
+
+				// Reconcile GitRepository resources when git info is present
+				if payload.GitRepo != "" || payload.Ref != "" {
+					// For client-originated git events we only have the repo full name and ref;
+					// ReconcileGitRepositories will typically be driven from the server side,
+					// but we still call it here to keep behavior consistent across modes.
+					r.reconciler.ReconcileGitRepositories(nil, payload.Ref)
+				}
 				processedMessages.With(prometheus.Labels{"status": "success"}).Inc()
 			}
 		}()
