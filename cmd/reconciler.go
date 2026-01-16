@@ -35,7 +35,7 @@ func (r *Reconciler) ReconcileOciSources(ociUrl string, tag string) {
 	for _, ociRepository := range res.Items {
 		if ociRepository.Spec.URL == ociUrl && ociRepository.Spec.Reference.Tag == tag {
 			r.logger.Info("Reconciling OCIRepository", zap.String("name", ociRepository.Name), zap.String("namespace", ociRepository.Namespace))
-			err := r.annotateRepository(ociRepository)
+			err := r.annotateOciRepository(ociRepository)
 			if err != nil {
 				r.logger.Error("Failed to annotate OCIRepository", zap.Error(err))
 				reconciledCount.With(prometheus.Labels{"name": ociRepository.Name, "status": "fail", "namespace": ociRepository.Namespace}).Inc()
@@ -91,7 +91,7 @@ func (r *Reconciler) ReconcileGitRepositories(repoURL string, ref string) {
 	}
 }
 
-func (r *Reconciler) annotateRepository(repository sourceController.OCIRepository) error {
+func (r *Reconciler) annotateOciRepository(repository sourceController.OCIRepository) error {
 	patch := struct {
 		Metadata struct {
 			Annotations map[string]string `json:"annotations"`
