@@ -26,7 +26,7 @@ func NewReconciler(client *rest.RESTClient, logger *zap.Logger) *Reconciler {
 	}
 }
 
-func (r *Reconciler) ReconcileSources(ociUrl string, tag string) {
+func (r *Reconciler) ReconcileOciSources(ociUrl string, tag string) {
 	var res sourceController.OCIRepositoryList
 	err := r.restClient.Get().Resource("ocirepositories").Namespace("").Do(context.Background()).Into(&res)
 	if err != nil {
@@ -45,7 +45,7 @@ func (r *Reconciler) ReconcileSources(ociUrl string, tag string) {
 	}
 }
 
-func (r *Reconciler) ReconcileGitRepositories(repoURLs []string, ref string) {
+func (r *Reconciler) ReconcileGitRepositories(repoURL string, ref string) {
 	var res sourceController.GitRepositoryList
 	err := r.restClient.Get().Resource("gitrepositories").Namespace("").Do(context.Background()).Into(&res)
 	if err != nil {
@@ -53,12 +53,9 @@ func (r *Reconciler) ReconcileGitRepositories(repoURLs []string, ref string) {
 		return
 	}
 
-	normalizedTargets := make(map[string]struct{}, len(repoURLs))
-	for _, u := range repoURLs {
-		n := normalizeGitURL(u)
-		if n != "" {
-			normalizedTargets[n] = struct{}{}
-		}
+	normalizedTarget := normalizeGitURL(repoURL)
+	if normalizedTarget == "" {
+		return
 	}
 
 	branch := parseBranchFromRef(ref)
@@ -69,7 +66,7 @@ func (r *Reconciler) ReconcileGitRepositories(repoURLs []string, ref string) {
 			continue
 		}
 
-		if _, ok := normalizedTargets[normURL]; !ok {
+		if normURL != normalizedTarget {
 			continue
 		}
 

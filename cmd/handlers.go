@@ -184,7 +184,7 @@ func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
 		subscr.send <- payload
 	}
 
-	s.reconciler.ReconcileSources(ociUrl, tag)
+	s.reconciler.ReconcileOciSources(ociUrl, tag)
 }
 
 func (s *Handlers) HandlePushPayload(payload PushEventPayload) {
@@ -213,7 +213,7 @@ func (s *Handlers) HandlePushPayload(payload PushEventPayload) {
 
 	// Trigger reconciliation of matching GitRepository resources
 	if repoURL != "" {
-		s.reconciler.ReconcileGitRepositories([]string{repoURL}, payload.Ref)
+		s.reconciler.ReconcileGitRepositories(repoURL, payload.Ref)
 	} else {
 		s.logger.Warn("Push payload missing repository URLs, skipping GitRepository reconciliation",
 			zap.String("repository", payload.Repository.FullName),
