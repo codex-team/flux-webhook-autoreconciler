@@ -73,7 +73,7 @@ To get the webhook working, you'll need to sort out a few things:
 - Payload URL: `https://<your-domain>/webhook`
 - Content type: `application/json`
 - Secret (optional but recommended)
-- In the section "Which events would you like to trigger this webhook?", go for "Let me select individual events." and then tick the boxes for the "Registry packages" and \"Pushes\" events.
+- In the section "Which events would you like to trigger this webhook?", go for "Let me select individual events." and then tick the boxes for the "Registry packages" and "Pushes" events.
 
 And that’s it! Now when you push a new package to your GitHub registry or push commits to a GitHub repository, the matching Flux `OCIRepository` and `GitRepository` resources will be automatically reconciled.
 
