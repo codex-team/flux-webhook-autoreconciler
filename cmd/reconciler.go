@@ -57,9 +57,12 @@ func (a *K8sAnnotator) AnnotateOciRepository(repository sourceController.OCIRepo
 	patch.Metadata.Annotations = make(map[string]string)
 	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
 
-	patchJson, _ := json.Marshal(patch)
+	patchJson, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
 
-	_, err := a.dynamicClient.Resource(ociRepositoryGVR).
+	_, err = a.dynamicClient.Resource(ociRepositoryGVR).
 		Namespace(repository.Namespace).
 		Patch(context.Background(), repository.Name, types.MergePatchType, patchJson, metav1.PatchOptions{})
 
@@ -76,9 +79,12 @@ func (a *K8sAnnotator) AnnotateGitRepository(repository sourceController.GitRepo
 	patch.Metadata.Annotations = make(map[string]string)
 	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
 
-	patchJson, _ := json.Marshal(patch)
+	patchJson, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
 
-	_, err := a.dynamicClient.Resource(gitRepositoryGVR).
+	_, err = a.dynamicClient.Resource(gitRepositoryGVR).
 		Namespace(repository.Namespace).
 		Patch(context.Background(), repository.Name, types.MergePatchType, patchJson, metav1.PatchOptions{})
 
