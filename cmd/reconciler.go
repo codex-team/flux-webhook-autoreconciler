@@ -177,8 +177,14 @@ func (r *Reconciler) ReconcileGitRepositories(repoURL string, ref string) {
 			continue
 		}
 
-		// If GitRepository has a branch reference specified, reconcile only when it matches
-		if gitRepository.Spec.Reference != nil && gitRepository.Spec.Reference.Branch != "" && branch != "" && gitRepository.Spec.Reference.Branch != branch {
+		// Get repository branch (defaults to "master" per Flux docs)
+		repoBranch := "master"
+		if gitRepository.Spec.Reference != nil && gitRepository.Spec.Reference.Branch != "" {
+			repoBranch = gitRepository.Spec.Reference.Branch
+		}
+
+		// Reconcile only when branches match
+		if repoBranch != branch {
 			continue
 		}
 
