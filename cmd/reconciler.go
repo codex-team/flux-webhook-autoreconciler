@@ -14,14 +14,96 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-type Reconciler struct {
+// Annotator defines the interface for annotating Git and OCI repositories
+type Annotator interface {
+	AnnotateGitRepository(repository sourceController.GitRepository) error
+	AnnotateOciRepository(repository sourceController.OCIRepository) error
+}
+
+// K8sAnnotator implements Annotator using Kubernetes REST API
+type K8sAnnotator struct {
 	restClient *rest.RESTClient
+}
+
+// NewK8sAnnotator creates a new K8sAnnotator
+func NewK8sAnnotator(client *rest.RESTClient) *K8sAnnotator {
+	return &K8sAnnotator{
+		restClient: client,
+	}
+}
+
+func (a *K8sAnnotator) AnnotateOciRepository(repository sourceController.OCIRepository) error {
+	patch := struct {
+		Metadata struct {
+			Annotations map[string]string `json:"annotations"`
+		} `json:"metadata"`
+	}{}
+
+	patch.Metadata.Annotations = make(map[string]string)
+
+	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
+
+	patchJson, _ := json.Marshal(patch)
+
+	var res sourceController.OCIRepository
+	return a.restClient.
+		Patch(types.MergePatchType).
+		Resource("ocirepositories").
+		Namespace(repository.Namespace).
+		Name(repository.Name).
+		Body(patchJson).
+		Do(context.Background()).
+		Into(&res)
+}
+
+func (a *K8sAnnotator) AnnotateGitRepository(repository sourceController.GitRepository) error {
+	patch := struct {
+		Metadata struct {
+			Annotations map[string]string `json:"annotations"`
+		} `json:"metadata"`
+	}{}
+
+	patch.Metadata.Annotations = make(map[string]string)
+
+	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
+
+	patchJson, _ := json.Marshal(patch)
+
+	var res sourceController.GitRepository
+	return a.restClient.
+		Patch(types.MergePatchType).
+		Resource("gitrepositories").
+		Namespace(repository.Namespace).
+		Name(repository.Name).
+		Body(patchJson).
+		Do(context.Background()).
+		Into(&res)
+}
+
+// RESTClientGetter defines the interface for getting resources from Kubernetes
+type RESTClientGetter interface {
+	Get() *rest.Request
+}
+
+type Reconciler struct {
+	restClient RESTClientGetter
+	annotator  Annotator
 	logger     *zap.Logger
 }
 
 func NewReconciler(client *rest.RESTClient, logger *zap.Logger) *Reconciler {
 	return &Reconciler{
 		restClient: client,
+		annotator:  NewK8sAnnotator(client),
+		logger:     logger,
+	}
+}
+
+// NewReconcilerWithAnnotator creates a Reconciler with a custom Annotator (useful for testing)
+func NewReconcilerWithAnnotator(client RESTClientGetter, annotator Annotator, logger *zap.Logger) *Reconciler {
+	return &Reconciler{
+		restClient: client,
+		annotator:  annotator,
 		logger:     logger,
 	}
 }
@@ -35,7 +117,7 @@ func (r *Reconciler) ReconcileOciSources(ociUrl string, tag string) {
 	for _, ociRepository := range res.Items {
 		if ociRepository.Spec.URL == ociUrl && ociRepository.Spec.Reference.Tag == tag {
 			r.logger.Info("Reconciling OCIRepository", zap.String("name", ociRepository.Name), zap.String("namespace", ociRepository.Namespace))
-			err := r.annotateOciRepository(ociRepository)
+			err := r.annotator.AnnotateOciRepository(ociRepository)
 			if err != nil {
 				r.logger.Error("Failed to annotate OCIRepository", zap.Error(err))
 				reconciledCount.With(prometheus.Labels{"name": ociRepository.Name, "status": "fail", "namespace": ociRepository.Namespace}).Inc()
@@ -81,7 +163,7 @@ func (r *Reconciler) ReconcileGitRepositories(repoURL string, ref string) {
 			zap.String("url", gitRepository.Spec.URL),
 			zap.String("ref", ref),
 		)
-		err := r.annotateGitRepository(gitRepository)
+		err := r.annotator.AnnotateGitRepository(gitRepository)
 		if err != nil {
 			r.logger.Error("Failed to annotate GitRepository", zap.Error(err))
 			reconciledCount.With(prometheus.Labels{"name": gitRepository.Name, "status": "fail", "namespace": gitRepository.Namespace}).Inc()
@@ -89,54 +171,6 @@ func (r *Reconciler) ReconcileGitRepositories(repoURL string, ref string) {
 			reconciledCount.With(prometheus.Labels{"name": gitRepository.Name, "status": "success", "namespace": gitRepository.Namespace}).Inc()
 		}
 	}
-}
-
-func (r *Reconciler) annotateOciRepository(repository sourceController.OCIRepository) error {
-	patch := struct {
-		Metadata struct {
-			Annotations map[string]string `json:"annotations"`
-		} `json:"metadata"`
-	}{}
-
-	patch.Metadata.Annotations = make(map[string]string)
-
-	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
-
-	patchJson, _ := json.Marshal(patch)
-
-	var res sourceController.OCIRepository
-	return r.restClient.
-		Patch(types.MergePatchType).
-		Resource("ocirepositories").
-		Namespace(repository.Namespace).
-		Name(repository.Name).
-		Body(patchJson).
-		Do(context.Background()).
-		Into(&res)
-}
-
-func (r *Reconciler) annotateGitRepository(repository sourceController.GitRepository) error {
-	patch := struct {
-		Metadata struct {
-			Annotations map[string]string `json:"annotations"`
-		} `json:"metadata"`
-	}{}
-
-	patch.Metadata.Annotations = make(map[string]string)
-
-	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
-
-	patchJson, _ := json.Marshal(patch)
-
-	var res sourceController.GitRepository
-	return r.restClient.
-		Patch(types.MergePatchType).
-		Resource("gitrepositories").
-		Namespace(repository.Namespace).
-		Name(repository.Name).
-		Body(patchJson).
-		Do(context.Background()).
-		Into(&res)
 }
 
 func normalizeGitURL(raw string) string {
