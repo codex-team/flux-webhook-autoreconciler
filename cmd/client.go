@@ -91,14 +91,7 @@ func (r *Client) Run(ctx context.Context) {
 
 				// Reconcile GitRepository resources when git info is present
 				if payload.GitRepo != "" || payload.Ref != "" {
-					// For client-originated git events we only have the repo full name and ref;
-					// ReconcileGitRepositories will typically be driven from the server side,
-					// but we still call it here to keep behavior consistent across modes.
-					// Note: client mode doesn't have the full repo URL, so this will only work
-					// if GitRepository resources match by ref/branch filtering
-					if payload.GitRepo != "" {
-						r.reconciler.ReconcileGitRepositories(payload.GitRepo, payload.Ref)
-					}
+					r.reconciler.ReconcileGitRepositories(payload.GitRepo, payload.Ref)
 				}
 				processedMessages.With(prometheus.Labels{"status": "success"}).Inc()
 			}

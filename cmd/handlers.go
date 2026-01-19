@@ -193,15 +193,6 @@ func (s *Handlers) HandlePushPayload(payload PushEventPayload) {
 		zap.String("ref", payload.Ref),
 	)
 
-	// Notify subscribers about git push events
-	for subscr := range s.subscribers {
-		event := SubscribeEventPayload{
-			GitRepo: payload.Repository.FullName,
-			Ref:     payload.Ref,
-		}
-		subscr.send <- event
-	}
-
 	// Determine a canonical repository URL to use for matching GitRepository.spec.url
 	repoURL := payload.Repository.CloneURL
 	if repoURL == "" {
@@ -209,6 +200,15 @@ func (s *Handlers) HandlePushPayload(payload PushEventPayload) {
 	}
 	if repoURL == "" {
 		repoURL = payload.Repository.GitURL
+	}
+
+	// Notify subscribers about git push events
+	for subscr := range s.subscribers {
+		event := SubscribeEventPayload{
+			GitRepo: repoURL,
+			Ref:     payload.Ref,
+		}
+		subscr.send <- event
 	}
 
 	// Trigger reconciliation of matching GitRepository resources
