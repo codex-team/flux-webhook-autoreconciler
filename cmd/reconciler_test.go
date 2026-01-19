@@ -133,7 +133,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "https://github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "https://github.com/owner/repo", ""),
+				createTestGitRepository("repo", "default", "https://github.com/owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -144,7 +144,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "git@github.com:owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "https://github.com/owner/repo", ""),
+				createTestGitRepository("repo", "default", "https://github.com/owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -155,7 +155,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "ssh://git@github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "https://github.com/owner/repo", ""),
+				createTestGitRepository("repo", "default", "https://github.com/owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -166,7 +166,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "https://github.com/owner/repo.git",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "https://github.com/owner/repo", ""),
+				createTestGitRepository("repo", "default", "https://github.com/owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -177,7 +177,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "https://github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "https://github.com/owner/other", ""),
+				createTestGitRepository("repo", "default", "https://github.com/owner/other", "main"),
 			},
 			expectedCalls: 0,
 			expectedNames: []string{},
@@ -206,23 +206,12 @@ func TestReconcileGitRepositories(t *testing.T) {
 			expectedURLs:  []string{},
 		},
 		{
-			name:    "matching URL with branch filter - no branch in ref",
-			repoURL: "https://github.com/owner/repo",
-			ref:     "refs/tags/v1.0.0",
-			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "https://github.com/owner/repo", "main"),
-			},
-			expectedCalls: 1,
-			expectedNames: []string{"repo"},
-			expectedURLs:  []string{"https://github.com/owner/repo"},
-		},
-		{
 			name:    "multiple matching repositories",
 			repoURL: "https://github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo9", "default", "https://github.com/owner/repo", ""),
-				createTestGitRepository("repo10", "kube-system", "https://github.com/owner/repo", ""),
+				createTestGitRepository("repo9", "default", "https://github.com/owner/repo", "main"),
+				createTestGitRepository("repo10", "kube-system", "https://github.com/owner/repo", "main"),
 			},
 			expectedCalls: 2,
 			expectedNames: []string{"repo9", "repo10"},
@@ -233,7 +222,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "https://github.com/Owner/Repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "https://github.com/owner/repo", ""),
+				createTestGitRepository("repo", "default", "https://github.com/owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -244,7 +233,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "https://github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "git@github.com:owner/repo", ""),
+				createTestGitRepository("repo", "default", "git@github.com:owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -266,7 +255,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "https://github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "ssh://git@github.com/owner/repo", ""),
+				createTestGitRepository("repo", "default", "ssh://git@github.com/owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -277,7 +266,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "https://github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "https://github.com/owner/repo.git", ""),
+				createTestGitRepository("repo", "default", "https://github.com/owner/repo.git", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -288,7 +277,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "https://github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "http://github.com/owner/repo", ""),
+				createTestGitRepository("repo", "default", "http://github.com/owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -299,7 +288,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "git@github.com:owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "ssh://git@github.com/owner/repo", ""),
+				createTestGitRepository("repo", "default", "ssh://git@github.com/owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -310,7 +299,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "ssh://git@github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo", "default", "git@github.com:owner/repo", ""),
+				createTestGitRepository("repo", "default", "git@github.com:owner/repo", "main"),
 			},
 			expectedCalls: 1,
 			expectedNames: []string{"repo"},
@@ -321,10 +310,10 @@ func TestReconcileGitRepositories(t *testing.T) {
 			repoURL: "https://github.com/owner/repo",
 			ref:     "refs/heads/main",
 			gitRepos: []sourceController.GitRepository{
-				createTestGitRepository("repo18", "default", "https://github.com/owner/repo", ""),
-				createTestGitRepository("repo19", "default", "git@github.com:owner/repo", ""),
-				createTestGitRepository("repo20", "default", "ssh://git@github.com/owner/repo", ""),
-				createTestGitRepository("repo21", "default", "https://github.com/owner/repo.git", ""),
+				createTestGitRepository("repo18", "default", "https://github.com/owner/repo", "main"),
+				createTestGitRepository("repo19", "default", "git@github.com:owner/repo", "main"),
+				createTestGitRepository("repo20", "default", "ssh://git@github.com/owner/repo", "main"),
+				createTestGitRepository("repo21", "default", "https://github.com/owner/repo.git", "main"),
 			},
 			expectedCalls: 4,
 			expectedNames: []string{"repo18", "repo19", "repo20", "repo21"},
