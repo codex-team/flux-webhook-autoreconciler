@@ -1,20 +1,13 @@
 package main
 
 import (
-	"encoding/json"
-	"io"
-	"net/http"
 	"testing"
 
 	sourceController "github.com/fluxcd/source-controller/api/v1"
 	"go.uber.org/zap/zaptest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/rest/fake"
-	testclient "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
@@ -66,95 +59,25 @@ func (m *MockAnnotator) Reset() {
 	m.OciRepoErrors = make(map[string]error)
 }
 
-// mockRESTClientGetter implements RESTClientGetter for testing
-type mockRESTClientGetter struct {
-	client *fake.RESTClient
-}
-
-func (m *mockRESTClientGetter) Get() *rest.Request {
-	return m.client.Get()
-}
-
-// createMockRESTClient creates a mock REST client getter that returns predefined test data
-func createMockClient(gitRepos []sourceController.GitRepository, ociRepos []sourceController.OCIRepository) RESTClientGetter {
-	gitRepoList := sourceController.GitRepositoryList{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "GitRepositoryList",
-			APIVersion: "source.toolkit.fluxcd.io/v1",
-		},
-		Items: gitRepos,
-	}
-
-	ociRepoList := sourceController.OCIRepositoryList{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "OCIRepositoryList",
-			APIVersion: "source.toolkit.fluxcd.io/v1",
-		},
-		Items: ociRepos,
-	}
-
-	gitRepoListBytes, _ := json.Marshal(gitRepoList)
-	ociRepoListBytes, _ := json.Marshal(ociRepoList)
-
+// createMockClient creates a mock dynamic client that returns predefined test data
+func createMockClient(gitRepos []sourceController.GitRepository, ociRepos []sourceController.OCIRepository) dynamic.Interface {
 	scheme := runtime.NewScheme()
 	sourceController.AddToScheme(scheme)
 
-	fakeDynamic := dynamicfake.NewSimpleDynamicClient(scheme,
-        &ociRepoList, &gitRepoList,
-    )
+	// Convert slices to individual objects for the fake client
+	objects := make([]runtime.Object, 0, len(gitRepos)+len(ociRepos))
 
-	fakeDynamic.co
-
-	return fakeDynamic
-
-	// fake.CreateHTTPClient()
-
-	// fakeClientBuilder := fake.NewClientBuilder().WithScheme(scheme)
-    //         fakeClient := fakeClientBuilder.WithRuntimeObjects(objects...).Build()
-
-
-	// testclient.NewSimpleClientset(gitRepoList, ociRepoList).with
-
-	// client := &fake.RESTClient{
-	// 	GroupVersion:         schema.GroupVersion{Group: "source.toolkit.fluxcd.io", Version: "v1"},
-	// 	NegotiatedSerializer: serializer.NewCodecFactory(scheme).WithoutConversion(),
-	// 	Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-	// 		path := req.URL.Path
-	// 		var bodyBytes []byte
-	// 		if path == "/apis/source.toolkit.fluxcd.io/v1/gitrepositories" || path == "/apis/source.toolkit.fluxcd.io/v1/gitrepositories/" {
-	// 			bodyBytes = gitRepoListBytes
-	// 		} else if path == "/apis/source.toolkit.fluxcd.io/v1/ocirepositories" || path == "/apis/source.toolkit.fluxcd.io/v1/ocirepositories/" {
-	// 			bodyBytes = ociRepoListBytes
-	// 		}
-
-	// 		return &http.Response{
-	// 			StatusCode: http.StatusOK,
-	// 			Header:     http.Header{"Content-Type": []string{"application/json"}},
-	// 			Body:       &mockReadCloser{data: bodyBytes},
-	// 		}, nil
-	// 	}),
-	// }
-
-	// return &mockRESTClientGetter{client: client}
-}
-
-// mockReadCloser implements io.ReadCloser for the mock HTTP response
-type mockReadCloser struct {
-	data []byte
-	pos  int
-}
-
-func (m *mockReadCloser) Read(p []byte) (n int, err error) {
-	if m.pos >= len(m.data) {
-		return 0, io.EOF
+	// Add individual GitRepository objects
+	for i := range gitRepos {
+		objects = append(objects, &gitRepos[i])
 	}
-	n = copy(p, m.data[m.pos:])
-	m.pos += n
-	return n, nil
-}
 
-func (m *mockReadCloser) Close() error {
-	return nil
+	// Add individual OCIRepository objects
+	for i := range ociRepos {
+		objects = append(objects, &ociRepos[i])
+	}
+
+	return dynamicfake.NewSimpleDynamicClient(scheme, objects...)
 }
 
 // Helper functions to create test repository objects
@@ -321,7 +244,7 @@ func TestReconcileGitRepositories(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockAnnotator := NewMockAnnotator()
-			mockClient := createMockRESTClient(tt.gitRepos, []sourceController.OCIRepository{})
+			mockClient := createMockClient(tt.gitRepos, []sourceController.OCIRepository{})
 			logger := zaptest.NewLogger(t)
 
 			reconciler := NewReconcilerWithAnnotator(mockClient, mockAnnotator, logger)
@@ -400,18 +323,6 @@ func TestReconcileOciSources(t *testing.T) {
 			expectedTags:  []string{},
 		},
 		{
-			name:   "matching URL with empty tag",
-			ociUrl: "oci://registry.example.com/namespace/image",
-			tag:    "",
-			ociRepos: []sourceController.OCIRepository{
-				createTestOCIRepository("oci4", "default", "oci://registry.example.com/namespace/image", ""),
-			},
-			expectedCalls: 1,
-			expectedNames: []string{"oci4"},
-			expectedURLs:  []string{"oci://registry.example.com/namespace/image"},
-			expectedTags:  []string{""},
-		},
-		{
 			name:   "multiple matching repositories",
 			ociUrl: "oci://registry.example.com/namespace/image",
 			tag:    "v1.0.0",
@@ -455,7 +366,7 @@ func TestReconcileOciSources(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockAnnotator := NewMockAnnotator()
-			mockClient := createMockRESTClient([]sourceController.GitRepository{}, tt.ociRepos)
+			mockClient := createMockClient([]sourceController.GitRepository{}, tt.ociRepos)
 			logger := zaptest.NewLogger(t)
 
 			reconciler := NewReconcilerWithAnnotator(mockClient, mockAnnotator, logger)

@@ -10,8 +10,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/dynamic"
 )
 
 // Annotator defines the interface for annotating Git and OCI repositories
@@ -20,15 +22,28 @@ type Annotator interface {
 	AnnotateOciRepository(repository sourceController.OCIRepository) error
 }
 
-// K8sAnnotator implements Annotator using Kubernetes REST API
+var (
+	gitRepositoryGVR = schema.GroupVersionResource{
+		Group:    "source.toolkit.fluxcd.io",
+		Version:  "v1",
+		Resource: "gitrepositories",
+	}
+	ociRepositoryGVR = schema.GroupVersionResource{
+		Group:    "source.toolkit.fluxcd.io",
+		Version:  "v1",
+		Resource: "ocirepositories",
+	}
+)
+
+// K8sAnnotator implements Annotator using Kubernetes Dynamic Client
 type K8sAnnotator struct {
-	restClient *rest.RESTClient
+	dynamicClient dynamic.Interface
 }
 
 // NewK8sAnnotator creates a new K8sAnnotator
-func NewK8sAnnotator(client *rest.RESTClient) *K8sAnnotator {
+func NewK8sAnnotator(client dynamic.Interface) *K8sAnnotator {
 	return &K8sAnnotator{
-		restClient: client,
+		dynamicClient: client,
 	}
 }
 
@@ -40,20 +55,15 @@ func (a *K8sAnnotator) AnnotateOciRepository(repository sourceController.OCIRepo
 	}{}
 
 	patch.Metadata.Annotations = make(map[string]string)
-
 	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
 
 	patchJson, _ := json.Marshal(patch)
 
-	var res sourceController.OCIRepository
-	return a.restClient.
-		Patch(types.MergePatchType).
-		Resource("ocirepositories").
+	_, err := a.dynamicClient.Resource(ociRepositoryGVR).
 		Namespace(repository.Namespace).
-		Name(repository.Name).
-		Body(patchJson).
-		Do(context.Background()).
-		Into(&res)
+		Patch(context.Background(), repository.Name, types.MergePatchType, patchJson, metav1.PatchOptions{})
+
+	return err
 }
 
 func (a *K8sAnnotator) AnnotateGitRepository(repository sourceController.GitRepository) error {
@@ -64,72 +74,74 @@ func (a *K8sAnnotator) AnnotateGitRepository(repository sourceController.GitRepo
 	}{}
 
 	patch.Metadata.Annotations = make(map[string]string)
-
 	patch.Metadata.Annotations[fluxMeta.ReconcileRequestAnnotation] = metav1.Now().String()
 
 	patchJson, _ := json.Marshal(patch)
 
-	var res sourceController.GitRepository
-	return a.restClient.
-		Patch(types.MergePatchType).
-		Resource("gitrepositories").
+	_, err := a.dynamicClient.Resource(gitRepositoryGVR).
 		Namespace(repository.Namespace).
-		Name(repository.Name).
-		Body(patchJson).
-		Do(context.Background()).
-		Into(&res)
-}
+		Patch(context.Background(), repository.Name, types.MergePatchType, patchJson, metav1.PatchOptions{})
 
-// RESTClientGetter defines the interface for getting resources from Kubernetes
-type RESTClientGetter interface {
-	Get() *rest.Request
+	return err
 }
 
 type Reconciler struct {
-	restClient RESTClientGetter
-	annotator  Annotator
-	logger     *zap.Logger
+	dynamicClient dynamic.Interface
+	annotator     Annotator
+	logger        *zap.Logger
 }
 
-func NewReconciler(client *rest.RESTClient, logger *zap.Logger) *Reconciler {
+func NewReconciler(client dynamic.Interface, logger *zap.Logger) *Reconciler {
 	return &Reconciler{
-		restClient: client,
-		annotator:  NewK8sAnnotator(client),
-		logger:     logger,
+		dynamicClient: client,
+		annotator:     NewK8sAnnotator(client),
+		logger:        logger,
 	}
 }
 
 // NewReconcilerWithAnnotator creates a Reconciler with a custom Annotator (useful for testing)
-func NewReconcilerWithAnnotator(client RESTClientGetter, annotator Annotator, logger *zap.Logger) *Reconciler {
+func NewReconcilerWithAnnotator(client dynamic.Interface, annotator Annotator, logger *zap.Logger) *Reconciler {
 	return &Reconciler{
-		restClient: client,
-		annotator:  annotator,
-		logger:     logger,
+		dynamicClient: client,
+		annotator:     annotator,
+		logger:        logger,
 	}
 }
 
 func (r *Reconciler) ReconcileOciSources(ociUrl string, tag string) {
-	var res sourceController.OCIRepositoryList
-	err := r.restClient.Get().Resource("ocirepositories").Namespace("").Do(context.Background()).Into(&res)
+	unstructuredList, err := r.dynamicClient.Resource(ociRepositoryGVR).
+		Namespace("").
+		List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		r.logger.Error("Failed to get OCIRepositories", zap.Error(err))
+		return
 	}
-	for _, ociRepository := range res.Items {
-		if ociRepository.Spec.URL == ociUrl && ociRepository.Spec.Reference.Tag == tag {
+
+	for _, item := range unstructuredList.Items {
+		var ociRepository sourceController.OCIRepository
+		err := runtime.DefaultUnstructuredConverter.FromUnstructured(item.Object, &ociRepository)
+		if err != nil {
+			r.logger.Error("Failed to convert unstructured to OCIRepository", zap.Error(err))
+			continue
+		}
+
+		if ociRepository.Spec.URL == ociUrl && ociRepository.Spec.Reference != nil && ociRepository.Spec.Reference.Tag == tag {
 			r.logger.Info("Reconciling OCIRepository", zap.String("name", ociRepository.Name), zap.String("namespace", ociRepository.Namespace))
 			err := r.annotator.AnnotateOciRepository(ociRepository)
 			if err != nil {
 				r.logger.Error("Failed to annotate OCIRepository", zap.Error(err))
 				reconciledCount.With(prometheus.Labels{"name": ociRepository.Name, "status": "fail", "namespace": ociRepository.Namespace}).Inc()
+			} else {
+				reconciledCount.With(prometheus.Labels{"name": ociRepository.Name, "status": "success", "namespace": ociRepository.Namespace}).Inc()
 			}
-			reconciledCount.With(prometheus.Labels{"name": ociRepository.Name, "status": "success", "namespace": ociRepository.Namespace}).Inc()
 		}
 	}
 }
 
 func (r *Reconciler) ReconcileGitRepositories(repoURL string, ref string) {
-	var res sourceController.GitRepositoryList
-	err := r.restClient.Get().Resource("gitrepositories").Namespace("").Do(context.Background()).Into(&res)
+	unstructuredList, err := r.dynamicClient.Resource(gitRepositoryGVR).
+		Namespace("").
+		List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		r.logger.Error("Failed to get GitRepositories", zap.Error(err))
 		return
@@ -142,7 +154,14 @@ func (r *Reconciler) ReconcileGitRepositories(repoURL string, ref string) {
 
 	branch := parseBranchFromRef(ref)
 
-	for _, gitRepository := range res.Items {
+	for _, item := range unstructuredList.Items {
+		var gitRepository sourceController.GitRepository
+		err := runtime.DefaultUnstructuredConverter.FromUnstructured(item.Object, &gitRepository)
+		if err != nil {
+			r.logger.Error("Failed to convert unstructured to GitRepository", zap.Error(err))
+			continue
+		}
+
 		normURL := normalizeGitURL(gitRepository.Spec.URL)
 		if normURL == "" {
 			continue
@@ -163,7 +182,7 @@ func (r *Reconciler) ReconcileGitRepositories(repoURL string, ref string) {
 			zap.String("url", gitRepository.Spec.URL),
 			zap.String("ref", ref),
 		)
-		err := r.annotator.AnnotateGitRepository(gitRepository)
+		err = r.annotator.AnnotateGitRepository(gitRepository)
 		if err != nil {
 			r.logger.Error("Failed to annotate GitRepository", zap.Error(err))
 			reconciledCount.With(prometheus.Labels{"name": gitRepository.Name, "status": "fail", "namespace": gitRepository.Namespace}).Inc()

@@ -4,20 +4,21 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"go.uber.org/zap"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"go.uber.org/zap"
 )
 
 func runServer(ctx context.Context, wg *sync.WaitGroup, config Config, logger *zap.Logger) {
 	defer wg.Done()
 	addr := fmt.Sprintf("%s:%s", config.Host, config.Port)
 
-	k8sClient, err := getRestClient()
+	k8sClient, err := getDynamicClient()
 	if err != nil {
 		logger.Fatal("Failed to get Kubernetes client", zap.Error(err))
 	}
@@ -46,7 +47,7 @@ func runServer(ctx context.Context, wg *sync.WaitGroup, config Config, logger *z
 
 func runClient(ctx context.Context, wg *sync.WaitGroup, config Config, logger *zap.Logger) {
 	defer wg.Done()
-	k8sClient, err := getRestClient()
+	k8sClient, err := getDynamicClient()
 	if err != nil {
 		logger.Fatal("Failed to get Kubernetes client", zap.Error(err))
 	}

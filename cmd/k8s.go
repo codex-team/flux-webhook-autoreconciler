@@ -1,16 +1,13 @@
 package main
 
 import (
-	sourceController "github.com/fluxcd/source-controller/api/v1"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"log"
 	"os"
 	"path/filepath"
+
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 func getConfig() (*rest.Config, error) {
@@ -24,18 +21,6 @@ func getConfig() (*rest.Config, error) {
 			return nil, err
 		}
 	}
-
-	schema := scheme.Scheme
-	err = sourceController.AddToScheme(schema)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	config.GroupVersion = &sourceController.GroupVersion
-	config.APIPath = "/apis"
-
-	config.NegotiatedSerializer = serializer.NewCodecFactory(schema)
-	//config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
 
 	return config, nil
 }
