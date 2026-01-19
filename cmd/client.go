@@ -89,8 +89,8 @@ func (r *Client) Run(ctx context.Context) {
 					r.reconciler.ReconcileOciSources(payload.OciUrl, payload.Tag)
 				}
 
-				// Reconcile GitRepository resources when git info is present
-				if payload.GitRepo != "" || payload.Ref != "" {
+				// Reconcile GitRepository resources when both gitRepo and ref are present
+				if payload.GitRepo != "" && payload.Ref != "" {
 					r.reconciler.ReconcileGitRepositories(payload.GitRepo, payload.Ref)
 				}
 				processedMessages.With(prometheus.Labels{"status": "success"}).Inc()
