@@ -6,16 +6,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
-	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/zap"
 )
 
 const (
@@ -42,6 +43,7 @@ type RegistryPackagePayload struct {
 type ExpectedPayload struct {
 	ContainerPushPayload
 	PingEventPayload
+	PushEventPayload
 }
 
 type PingEventPayload struct {
@@ -54,8 +56,22 @@ type ContainerPushPayload struct {
 }
 
 type SubscribeEventPayload struct {
-	OciUrl string `json:"oci_url"`
-	Tag    string `json:"tag"`
+	OciUrl  string `json:"oci_url,omitempty"`
+	Tag     string `json:"tag,omitempty"`
+	GitRepo string `json:"git_repo,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+}
+
+type PushRepositoryPayload struct {
+	FullName string `json:"full_name" validate:"required"`
+	CloneURL string `json:"clone_url"`
+	SSHURL   string `json:"ssh_url"`
+	GitURL   string `json:"git_url"`
+}
+
+type PushEventPayload struct {
+	Ref        string                `json:"ref" validate:"required"`
+	Repository PushRepositoryPayload `json:"repository" validate:"required"`
 }
 
 type Subscriber struct {
@@ -168,7 +184,42 @@ func (s *Handlers) HandleContainerPushPayload(payload ContainerPushPayload) {
 		subscr.send <- payload
 	}
 
-	s.reconciler.ReconcileSources(ociUrl, tag)
+	s.reconciler.ReconcileOciSources(ociUrl, tag)
+}
+
+func (s *Handlers) HandlePushPayload(payload PushEventPayload) {
+	s.logger.Info("Handling push payload",
+		zap.String("repository", payload.Repository.FullName),
+		zap.String("ref", payload.Ref),
+	)
+
+	// Determine a canonical repository URL to use for matching GitRepository.spec.url
+	repoURL := payload.Repository.CloneURL
+	if repoURL == "" {
+		repoURL = payload.Repository.SSHURL
+	}
+	if repoURL == "" {
+		repoURL = payload.Repository.GitURL
+	}
+
+	// Notify subscribers about git push events
+	for subscr := range s.subscribers {
+		event := SubscribeEventPayload{
+			GitRepo: repoURL,
+			Ref:     payload.Ref,
+		}
+		subscr.send <- event
+	}
+
+	// Trigger reconciliation of matching GitRepository resources
+	if repoURL != "" {
+		s.reconciler.ReconcileGitRepositories(repoURL, payload.Ref)
+	} else {
+		s.logger.Warn("Push payload missing repository URLs, skipping GitRepository reconciliation",
+			zap.String("repository", payload.Repository.FullName),
+			zap.String("ref", payload.Ref),
+		)
+	}
 }
 
 func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
@@ -214,6 +265,8 @@ func (s *Handlers) Webhook(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case s.validate.Struct(requestPayload.ContainerPushPayload) == nil:
 		s.HandleContainerPushPayload(requestPayload.ContainerPushPayload)
+	case s.validate.Struct(requestPayload.PushEventPayload) == nil:
+		s.HandlePushPayload(requestPayload.PushEventPayload)
 	case s.validate.Struct(requestPayload.PingEventPayload) == nil:
 	default:
 	}
