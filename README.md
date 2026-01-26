@@ -25,7 +25,7 @@ There is helm chart available published as OCI artifact in GitHub Packages [here
 You can install it using [Helm CLI](https://helm.sh/docs/topics/registries/) or by using Flux itself:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: flux-webhook-autoreconciler
@@ -34,7 +34,7 @@ spec:
   type: oci
   url: oci://ghcr.io/codex-team/flux-webhook-autoreconciler/chart
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flux-webhook-autoreconciler
@@ -44,7 +44,7 @@ spec:
   chart:
     spec:
       chart: flux-webhook-autoreconciler
-      version: '1.0.0' # replace with the latest version from here https://github.com/codex-team/flux-webhook-autoreconciler/pkgs/container/flux-webhook-autoreconciler%2Fchart%2Fflux-webhook-autoreconciler
+      version: '2.0.0' # replace with the latest version from here https://github.com/codex-team/flux-webhook-autoreconciler/pkgs/container/flux-webhook-autoreconciler%2Fchart%2Fflux-webhook-autoreconciler
       sourceRef:
         kind: HelmRepository
         name: flux-webhook-autoreconciler
