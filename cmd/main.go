@@ -25,7 +25,8 @@ func runServer(ctx context.Context, wg *sync.WaitGroup, config Config, logger *z
 	mux := http.NewServeMux()
 	reconciler := NewReconciler(k8sClient, logger)
 	handlers := NewHandlers(config, reconciler, logger)
-	mux.Handle("/webhook", WithLogging(http.HandlerFunc(handlers.Webhook), logger))
+	mux.Handle("/webhook", WithLogging(http.HandlerFunc(handlers.WebhookGithub), logger))
+	mux.Handle("/webhook/generic/oci", WithLogging(http.HandlerFunc(handlers.WebhookGenericOCI), logger))
 	mux.Handle("/subscribe", WithLogging(http.HandlerFunc(handlers.Subscribe), logger))
 	server := &http.Server{Addr: addr, Handler: mux}
 
